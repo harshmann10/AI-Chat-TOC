@@ -1,0 +1,35 @@
+{
+    "manifest_version": 3,
+    "name": "AI Chat TOC",
+    "version": "1.0",
+    "description": "Adds a Table of Contents to ChatGPT, Gemini, Perplexity, and Claude",
+    "icons": {
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "permissions": [],
+    "host_permissions": [
+        "*://chatgpt.com/*",
+        "*://gemini.google.com/*",
+        "*://www.perplexity.ai/*",
+        "*://claude.ai/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "*://chatgpt.com/*",
+                "*://gemini.google.com/*",
+                "*://www.perplexity.ai/*",
+                "*://claude.ai/*"
+            ],
+            "js": [
+                "ui.js",
+                "main.js"
+            ],
+            "css": [
+                "style.css"
+            ],
+            "run_at": "document_idle"
+        }
+    ]
+}
