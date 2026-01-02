@@ -43,7 +43,7 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox-Add--ons-FF7139?logo=firefox)](https://addons.mozilla.org/en-US/firefox/addon/ai-chat-toc/)
 
 ### Chrome / Edge
-[![Edge Web Store](https://img.shields.io/badge/edge-Web%20Store-4285F4?logo=googlechrome)](https://microsoftedge.microsoft.com/addons/detail/ai-chat-toc/ciclciocehhjmkknjhnpaaligmffmpcb)
+[![Edge Web Store](https://img.shields.io/badge/Edge-Web%20Store-4285F4?logo=googlechrome)](https://microsoftedge.microsoft.com/addons/detail/ai-chat-toc/ciclciocehhjmkknjhnpaaligmffmpcb)
 
 ### Manual Installation
 ```bash
@@ -78,10 +78,19 @@ AI Chat TOC/
 
 ---
 
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+T` | Toggle TOC visibility |
+| `Double-click` item | Copy query to clipboard |
+
+---
+
 ## 🚀 Roadmap
 
-- [ ] Keyboard shortcut (Ctrl+Shift+T)
-- [ ] Click to copy individual query
+- [x] ~~Keyboard shortcut (Ctrl+Shift+T)~~
+- [x] ~~Double-click to copy individual query~~
 - [ ] Highlight current query in viewport
 - [ ] Settings page
 - [ ] More AI platforms

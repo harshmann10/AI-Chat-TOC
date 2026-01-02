@@ -1,12 +1,6 @@
 /**
- * Unified TOC Extension - Main Entry Point
- * Contains all site-specific configurations and the router.
- * 
- * Performance Optimizations Applied:
- * - Throttled MutationObserver callbacks (500ms)
- * - Increased periodic check interval to 5 seconds
- * - Visibility API to pause when tab is hidden
- * - Reduced console logging
+ * AI Chat TOC - Main Entry Point
+ * Site-specific configurations and router.
  */
 
 // =============================================================================
@@ -57,7 +51,7 @@ const SITES = {
             pageLoad: 2000,
             promptSubmission: 500,
             chatChange: 1500,
-            stateCheck: 5000, // Increased from 2000 to 5000
+            stateCheck: 5000,
         },
 
         lastQueryCount: 0,
@@ -134,7 +128,7 @@ const SITES = {
             pageLoad: 1500,
             promptSubmission: 500,
             chatChange: 1500,
-            stateCheck: 5000, // Increased from 1500 to 5000
+            stateCheck: 5000,
         },
 
         lastQueryCount: 0,
@@ -255,7 +249,7 @@ const SITES = {
             pageLoad: 2000,
             promptSubmission: 200,
             chatChange: 1500,
-            stateCheck: 5000, // Increased from 2000 to 5000
+            stateCheck: 5000,
         },
 
         lastQueryCount: 0,
@@ -331,7 +325,7 @@ const SITES = {
             pageLoad: 2000,
             promptSubmission: 500,
             chatChange: 1500,
-            stateCheck: 5000, // Increased from 2000 to 5000
+            stateCheck: 5000,
         },
 
         lastQueryCount: 0,

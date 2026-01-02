@@ -38,6 +38,7 @@ window.TOC.CONSTANTS = {
 window.TOC.PositionManager = class PositionManager {
     constructor(storageKey) {
         this.storageKey = storageKey;
+        this.collapsedKey = storageKey + "-collapsed";
     }
 
     savePosition(x, y) {
@@ -47,6 +48,15 @@ window.TOC.PositionManager = class PositionManager {
     getSavedPosition() {
         const saved = localStorage.getItem(this.storageKey);
         return saved ? JSON.parse(saved) : null;
+    }
+
+    saveCollapsedState(isCollapsed) {
+        localStorage.setItem(this.collapsedKey, JSON.stringify(isCollapsed));
+    }
+
+    getCollapsedState() {
+        const saved = localStorage.getItem(this.collapsedKey);
+        return saved ? JSON.parse(saved) : false;
     }
 
     applyPosition(element, x, y) {
@@ -202,6 +212,7 @@ window.TOC.DragManager = class DragManager {
             this.element.classList.add(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
             this.positionManager.applyPosition(this.element, newX, currentY);
             this.positionManager.savePosition(newX, currentY);
+            this.positionManager.saveCollapsedState(true);
         } else {
             const expandedWidth = parseFloat(this.element.dataset.expandedWidth) || 300;
 
@@ -218,6 +229,7 @@ window.TOC.DragManager = class DragManager {
 
             this.positionManager.applyPosition(this.element, constrained.x, constrained.y);
             this.positionManager.savePosition(constrained.x, constrained.y);
+            this.positionManager.saveCollapsedState(false);
         }
     }
 
@@ -316,6 +328,40 @@ window.TOC.UI = class UI {
 
         document.addEventListener("click", (e) => this.handleDocumentClick(e), true);
         document.addEventListener("keydown", (e) => this.handleKeyDown(e), true);
+
+        // Global keyboard shortcut: Ctrl+Shift+T to toggle TOC
+        document.addEventListener("keydown", (e) => this.handleGlobalShortcut(e));
+    }
+
+    handleGlobalShortcut(event) {
+        // Ctrl+Shift+T or Cmd+Shift+T to toggle TOC
+        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "t") {
+            event.preventDefault();
+            event.stopPropagation();
+            this.toggleTOC();
+        }
+    }
+
+    toggleTOC() {
+        const tocContainer = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+        if (!tocContainer) {
+            this.createTOC();
+            return;
+        }
+
+        const isCollapsed = tocContainer.classList.contains(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
+
+        if (isCollapsed) {
+            // Expand
+            tocContainer.classList.remove(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
+            this.positionManager.saveCollapsedState(false);
+        } else {
+            // Collapse
+            tocContainer.classList.add(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
+            this.positionManager.saveCollapsedState(true);
+        }
+
+        this.showToast(isCollapsed ? "TOC expanded" : "TOC collapsed");
     }
 
     delayedCreateTOC() {
@@ -601,14 +647,22 @@ window.TOC.UI = class UI {
             link.href = `#${questionId}`;
             link.setAttribute("data-num", index + 1);
             link.textContent = shortText;
-            link.title = questionText;
+            link.title = `${questionText}\n\n💡 Double-click to copy`;
 
+            // Single click - scroll to query
             link.addEventListener("click", (e) => {
                 e.preventDefault();
                 const targetElement = document.getElementById(questionId);
                 if (targetElement) {
                     targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
                 }
+            });
+
+            // Double click - copy query text
+            link.addEventListener("dblclick", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.copyToClipboard(questionText, `Copied: "${shortText}"`);
             });
 
             listItem.appendChild(link);
@@ -622,7 +676,14 @@ window.TOC.UI = class UI {
     setupTOCFunctionality(tocContainer) {
         this.setupSearchFunctionality(tocContainer);
         this.setupDragFunctionality(tocContainer);
-        this.setupResponsiveCollapse(tocContainer);
+        this.restoreCollapsedState(tocContainer);
+    }
+
+    restoreCollapsedState(tocContainer) {
+        const isCollapsed = this.positionManager.getCollapsedState();
+        if (isCollapsed) {
+            tocContainer.classList.add(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
+        }
     }
 
     setupSearchFunctionality(tocContainer) {
