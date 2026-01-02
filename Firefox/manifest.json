@@ -33,9 +33,11 @@
     ],
     "browser_specific_settings": {
         "gecko": {
-            "id": "unified-toc@aosl.jb",
+            "id": "ai-chat-toc@extension",
             "data_collection_permissions": {
-                "required": false
+                "required": [
+                    "none"
+                ]
             }
         }
     }
