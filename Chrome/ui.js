@@ -647,9 +647,9 @@ window.TOC.UI = class UI {
             link.href = `#${questionId}`;
             link.setAttribute("data-num", index + 1);
             link.textContent = shortText;
-            link.title = `${questionText}\n\n💡 Double-click to copy`;
+            link.title = questionText;
 
-            // Single click - scroll to query
+            // Click - scroll to query
             link.addEventListener("click", (e) => {
                 e.preventDefault();
                 const targetElement = document.getElementById(questionId);
@@ -658,14 +658,18 @@ window.TOC.UI = class UI {
                 }
             });
 
-            // Double click - copy query text
-            link.addEventListener("dblclick", (e) => {
+            // Copy button
+            const copyBtn = document.createElement("button");
+            copyBtn.className = "toc-copy-btn";
+            copyBtn.title = "Copy query";
+            copyBtn.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.copyToClipboard(questionText, `Copied: "${shortText}"`);
+                this.copyToClipboard(questionText, "Copied!");
             });
 
             listItem.appendChild(link);
+            listItem.appendChild(copyBtn);
             tocList.appendChild(listItem);
             listItems.push(listItem);
         });

@@ -5,7 +5,7 @@
 A browser extension that adds a **Table of Contents** sidebar to AI chat interfaces. Never lose track of your conversation again!
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.2-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platforms-4-orange" alt="Platforms">
 </p>
@@ -83,14 +83,14 @@ AI Chat TOC/
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Shift+T` | Toggle TOC visibility |
-| `Double-click` item | Copy query to clipboard |
+| 📋 Copy button | Hover over item to see copy button |
 
 ---
 
 ## 🚀 Roadmap
 
 - [x] ~~Keyboard shortcut (Ctrl+Shift+T)~~
-- [x] ~~Double-click to copy individual query~~
+- [x] ~~Copy button on each query~~
 - [ ] Settings page
 - [ ] More AI platforms
 
