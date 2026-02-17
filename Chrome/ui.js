@@ -90,7 +90,7 @@ window.TOC.PositionManager = class PositionManager {
 };
 
 // =============================================================================
-// DragManager - Handles drag functionality for the TOC
+// DragManager - Handles drag functionality for the TOC (mouse + touch)
 // =============================================================================
 
 window.TOC.DragManager = class DragManager {
@@ -100,13 +100,15 @@ window.TOC.DragManager = class DragManager {
         this.isDragging = false;
         this.hasMoved = false;
         this.isClickOnToggle = false;
-        this.startMouseX = 0;
-        this.startMouseY = 0;
+        this.startX = 0;
+        this.startY = 0;
         this.startElementX = 0;
         this.startElementY = 0;
 
         this.boundDrag = this.drag.bind(this);
         this.boundStopDrag = this.stopDrag.bind(this);
+        this.boundTouchDrag = this.touchDrag.bind(this);
+        this.boundTouchEnd = this.touchEnd.bind(this);
 
         this.init();
     }
@@ -117,9 +119,24 @@ window.TOC.DragManager = class DragManager {
 
         header.style.cursor = "move";
         header.style.userSelect = "none";
+        header.style.touchAction = "none"; // Prevent default touch scrolling
+
+        // Mouse events
         header.addEventListener("mousedown", this.startDrag.bind(this));
+
+        // Touch events
+        header.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
     }
 
+    // Get coordinates from mouse or touch event
+    getEventCoords(e) {
+        if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    // =========== MOUSE EVENTS ===========
     startDrag(e) {
         const isToggleBtn = e.target.closest(`#${window.TOC.CONSTANTS.IDS.TOC_TOGGLE_BTN}`);
         const isCollapsed = this.element.classList.contains(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
@@ -139,8 +156,8 @@ window.TOC.DragManager = class DragManager {
         this.isDragging = true;
         this.hasMoved = false;
         this.isClickOnToggle = !!isToggleBtn;
-        this.startMouseX = e.clientX;
-        this.startMouseY = e.clientY;
+        this.startX = e.clientX;
+        this.startY = e.clientY;
 
         const rect = this.element.getBoundingClientRect();
         this.startElementX = rect.left;
@@ -160,8 +177,8 @@ window.TOC.DragManager = class DragManager {
         e.preventDefault();
         e.stopPropagation();
 
-        const deltaX = e.clientX - this.startMouseX;
-        const deltaY = e.clientY - this.startMouseY;
+        const deltaX = e.clientX - this.startX;
+        const deltaY = e.clientY - this.startY;
 
         if (!this.hasMoved && Math.abs(deltaX) < 3 && Math.abs(deltaY) < 3) return;
         this.hasMoved = true;
@@ -195,6 +212,90 @@ window.TOC.DragManager = class DragManager {
         document.removeEventListener("mousemove", this.boundDrag);
         document.removeEventListener("mouseup", this.boundStopDrag);
         document.body.style.userSelect = "";
+    }
+
+    // =========== TOUCH EVENTS ===========
+    touchStart(e) {
+        const isToggleBtn = e.target.closest(`#${window.TOC.CONSTANTS.IDS.TOC_TOGGLE_BTN}`);
+        const isExportBtn = e.target.closest("#toc-export-btn");
+        const isCollapsed = this.element.classList.contains(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
+
+        // Let export button work normally
+        if (isExportBtn) return;
+
+        if (isToggleBtn) {
+            if (!isCollapsed) {
+                e.preventDefault();
+                this.toggleCollapse(false);
+                return;
+            }
+        }
+
+        if (e.touches.length !== 1) return;
+
+        e.preventDefault();
+
+        this.isDragging = true;
+        this.hasMoved = false;
+        this.isClickOnToggle = !!isToggleBtn;
+
+        const touch = e.touches[0];
+        this.startX = touch.clientX;
+        this.startY = touch.clientY;
+
+        const rect = this.element.getBoundingClientRect();
+        this.startElementX = rect.left;
+        this.startElementY = rect.top;
+
+        this.positionManager.applyPosition(this.element, this.startElementX, this.startElementY);
+        this.applyDragStyles();
+
+        document.addEventListener("touchmove", this.boundTouchDrag, { passive: false });
+        document.addEventListener("touchend", this.boundTouchEnd);
+        document.addEventListener("touchcancel", this.boundTouchEnd);
+    }
+
+    touchDrag(e) {
+        if (!this.isDragging || e.touches.length !== 1) return;
+
+        e.preventDefault();
+
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - this.startX;
+        const deltaY = touch.clientY - this.startY;
+
+        if (!this.hasMoved && Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) return;
+        this.hasMoved = true;
+
+        let newX = this.startElementX + deltaX;
+        let newY = this.startElementY + deltaY;
+
+        const constrained = this.positionManager.constrainToViewport(
+            newX,
+            newY,
+            this.element.offsetWidth,
+            this.element.offsetHeight
+        );
+
+        this.positionManager.applyPosition(this.element, constrained.x, constrained.y);
+    }
+
+    touchEnd(e) {
+        if (!this.isDragging) return;
+
+        this.isDragging = false;
+
+        const rect = this.element.getBoundingClientRect();
+        this.positionManager.savePosition(rect.left, rect.top);
+
+        if (!this.hasMoved && this.isClickOnToggle) {
+            this.toggleCollapse(true);
+        }
+
+        this.removeDragStyles();
+        document.removeEventListener("touchmove", this.boundTouchDrag);
+        document.removeEventListener("touchend", this.boundTouchEnd);
+        document.removeEventListener("touchcancel", this.boundTouchEnd);
     }
 
     toggleCollapse(isExpanding) {

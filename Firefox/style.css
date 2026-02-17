@@ -523,13 +523,9 @@
     }
 }
 
-/* =================================================================== */
-/* Print & Accessibility                                               */
-/* =================================================================== */
-
-@media print {
-    #toc-extension {
-        display: none !important;
+@media (max-width: 768px) {
+    :root {
+        --toc-width: 240px;
     }
 }
 

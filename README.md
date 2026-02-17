@@ -5,7 +5,7 @@
 A browser extension that adds a **Table of Contents** sidebar to AI chat interfaces. Never lose track of your conversation again!
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.2.2-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platforms-4-orange" alt="Platforms">
 </p>
@@ -30,6 +30,7 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 | 📋 **TOC Sidebar** | Lists all your queries in a navigable list |
 | 🔍 **Search** | Filter queries by keyword |
 | 🖱️ **Drag & Drop** | Reposition anywhere on screen |
+| 📱 **Mobile Friendly** | Touch support & responsive design |
 | 💾 **Position Memory** | Remembers position per-site |
 | 📤 **Export** | Copy/download as text or markdown |
 | 🌙 **Dark Mode** | Auto-adapts to system preference |
