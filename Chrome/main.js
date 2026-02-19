@@ -398,6 +398,99 @@ const SITES = {
             }, self.delays.stateCheck);
         },
     },
+
+
+    // =========================================================================
+    // Grok Configuration
+    // =========================================================================
+    grok: {
+        name: "Grok",
+        host: ["grok.com", "x.com"],
+        themeClass: "theme-grok",
+        storageKey: "grok-toc-position",
+        selectors: {
+            userMessage: ".message-bubble.bg-surface-l1, .user-message, [data-testid='user-message'], [data-testid='tweetText'][dir='auto'], .message-user, [data-testid='messageEntry']",
+            sendButton: "button[aria-label='Submit'], [data-testid='send-button'], [aria-label='Send Post']",
+            promptInput: "div.tiptap.ProseMirror, textarea[aria-label='Ask Grok anything'], [data-testid='tweetTextarea_0'], textarea, [contenteditable='true']",
+        },
+        delays: {
+            pageLoad: 2500,
+            promptSubmission: 500,
+            chatChange: 1500,
+            stateCheck: 5000,
+        },
+
+        lastQueryCount: 0,
+        lastUrl: "",
+
+        getQueries: function () {
+            // Only run on Grok pages if on x.com
+            if (location.host.includes("x.com") && !location.pathname.includes("grok")) {
+                return [];
+            }
+
+            const possibleSelectors = this.selectors.userMessage.split(",").map(s => s.trim());
+            let queries = [];
+
+            for (const selector of possibleSelectors) {
+                const elements = document.querySelectorAll(selector);
+                if (elements.length > 0) {
+                    queries = Array.from(elements)
+                        .map((el) => ({ text: el.textContent.trim(), element: el }))
+                        .filter((q) => q.text && q.text.length > 0);
+                    if (queries.length > 0) break;
+                }
+            }
+
+            const seen = new Set();
+            return queries.filter((q) => {
+                const key = q.text.substring(0, 100);
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        },
+
+        setupMonitor: function (onUpdate) {
+            const self = this;
+            self.lastUrl = location.href;
+            self.lastQueryCount = 0;
+
+            const throttledUrlCheck = TOC_PERF.throttle(() => {
+                if (!TOC_PERF.isTabVisible()) return;
+
+                const currentUrl = location.href;
+                if (currentUrl !== self.lastUrl) {
+                    self.lastUrl = currentUrl;
+                    self.lastQueryCount = 0;
+                    setTimeout(onUpdate, self.delays.chatChange);
+                }
+            }, 500);
+
+            new MutationObserver(throttledUrlCheck).observe(document, { subtree: true, childList: true });
+
+            setInterval(() => {
+                if (!TOC_PERF.isTabVisible()) return;
+
+                // X.com check
+                if (location.host.includes("x.com") && !location.pathname.includes("grok")) return;
+
+                const tocExists = document.getElementById("toc-extension");
+                const currentQueries = self.getQueries().length;
+
+                if (!tocExists && currentQueries > 0) {
+                    self.lastQueryCount = currentQueries;
+                    onUpdate();
+                    return;
+                }
+
+                if (currentQueries !== self.lastQueryCount && currentQueries > 0) {
+                    self.lastQueryCount = currentQueries;
+                    onUpdate();
+                }
+            }, self.delays.stateCheck);
+        },
+    },
 };
 
 // =============================================================================
@@ -408,8 +501,14 @@ const SITES = {
     let activeAdapter = null;
 
     for (const key in SITES) {
-        if (location.host.includes(SITES[key].host)) {
-            activeAdapter = SITES[key];
+        const site = SITES[key];
+        if (Array.isArray(site.host)) {
+            if (site.host.some(h => location.host.includes(h))) {
+                activeAdapter = site;
+                break;
+            }
+        } else if (location.host.includes(site.host)) {
+            activeAdapter = site;
             break;
         }
     }

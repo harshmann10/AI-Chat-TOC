@@ -5,9 +5,9 @@
 A browser extension that adds a **Table of Contents** sidebar to AI chat interfaces. Never lose track of your conversation again!
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.2-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/platforms-4-orange" alt="Platforms">
+  <img src="https://img.shields.io/badge/platforms-5-orange" alt="Platforms">
 </p>
 
 ---
@@ -20,6 +20,7 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 | Gemini | ✅ | Blue |
 | Perplexity | ✅ | Teal |
 | Claude | ✅ | Orange |
+| Grok | ✅ | Black |
 
 ---
 
@@ -92,6 +93,7 @@ AI Chat TOC/
 
 - [x] ~~Keyboard shortcut (Ctrl+Shift+T)~~
 - [x] ~~Copy button on each query~~
+- [x] ~~Grok support~~
 - [ ] Settings page
 - [ ] More AI platforms
 
