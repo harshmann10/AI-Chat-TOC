@@ -41,10 +41,10 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 
 ## 📥 Installation
 
-### Firefox
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox-Add--ons-FF7139?logo=firefox)](https://addons.mozilla.org/en-US/firefox/addon/ai-chat-toc/)
 
-### Chrome / Edge
+[![Chrome Web Store](https://img.shields.io/badge/Chrome-Web%20Store-4285F4?logo=googlechrome)](https://chromewebstore.google.com/detail/ai-chat-toc/ainbhafdpkbgbkcomkhkilokelolnnpn)
+
 [![Edge Web Store](https://img.shields.io/badge/Edge-Web%20Store-4285F4?logo=googlechrome)](https://microsoftedge.microsoft.com/addons/detail/ai-chat-toc/ciclciocehhjmkknjhnpaaligmffmpcb)
 
 ### Manual Installation
@@ -95,6 +95,7 @@ AI Chat TOC/
 - [x] ~~Copy button on each query~~
 - [x] ~~Grok support~~
 - [ ] Settings page
+- [ ] Adding option for including answer in the TOC
 - [ ] More AI platforms
 
 ---
