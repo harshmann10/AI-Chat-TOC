@@ -40,7 +40,7 @@ const SITES = {
     chatgpt: {
         name: "ChatGPT",
         host: "chatgpt.com",
-        themeClass: "theme-chatgpt",
+        platformKey: "chatgpt",
         storageKey: "chatgpt-toc-position",
         selectors: {
             userMessage: 'div[data-message-author-role="user"]',
@@ -116,7 +116,7 @@ const SITES = {
     gemini: {
         name: "Gemini",
         host: "gemini.google.com",
-        themeClass: "theme-gemini",
+        platformKey: "gemini",
         storageKey: "gemini-toc-position",
         selectors: {
             userMessage: ".query-text-line, .user-message, .query",
@@ -238,7 +238,7 @@ const SITES = {
     perplexity: {
         name: "Perplexity",
         host: "perplexity.ai",
-        themeClass: "theme-perplexity",
+        platformKey: "perplexity",
         storageKey: "perplexity-toc-position",
         selectors: {
             userMessage: "h1.group\\/query, div.group\\/query, .flex.flex-col.gap-1.pb-2",
@@ -314,7 +314,7 @@ const SITES = {
     claude: {
         name: "Claude",
         host: "claude.ai",
-        themeClass: "theme-claude",
+        platformKey: "claude",
         storageKey: "claude-toc-position",
         selectors: {
             userMessage: '[data-testid="user-message"], .human-message, [class*="human"]',
@@ -406,7 +406,7 @@ const SITES = {
     grok: {
         name: "Grok",
         host: ["grok.com", "x.com"],
-        themeClass: "theme-grok",
+        platformKey: "grok",
         storageKey: "grok-toc-position",
         selectors: {
             userMessage: ".message-bubble.bg-surface-l1, .user-message, [data-testid='user-message'], [data-testid='tweetText'][dir='auto'], .message-user, [data-testid='messageEntry']",

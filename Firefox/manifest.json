@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "AI Chat TOC",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "Adds a Table of Contents to ChatGPT, Gemini, Perplexity, Claude, and Grok",
     "icons": {
         "48": "icons/icon48.png",
@@ -13,8 +13,12 @@
         "*://www.perplexity.ai/*",
         "*://claude.ai/*",
         "*://grok.com/*",
-        "*://x.com/*"
+        "*://x.com/*",
+        "storage"
     ],
+    "browser_action": {
+        "default_popup": "popup.html"
+    },
     "content_scripts": [
         {
             "matches": [
@@ -26,6 +30,7 @@
                 "*://x.com/*"
             ],
             "js": [
+                "themes.js",
                 "ui.js",
                 "main.js"
             ],

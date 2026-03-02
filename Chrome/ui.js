@@ -90,6 +90,93 @@ window.TOC.PositionManager = class PositionManager {
 };
 
 // =============================================================================
+// ThemeManager - Handles applying themes and dark mode
+// =============================================================================
+
+window.TOC.ThemeManager = class ThemeManager {
+    constructor() {
+        this.settings = { ...DEFAULT_SETTINGS };
+        this.init();
+    }
+
+    async init() {
+        await this.loadSettings();
+    }
+
+    async loadSettings() {
+        return new Promise((resolve) => {
+            const api = (typeof chrome !== 'undefined' && chrome.storage) ? chrome : (typeof browser !== 'undefined' && browser.storage) ? browser : null;
+            if (api && api.storage && api.storage.local) {
+                api.storage.local.get(DEFAULT_SETTINGS, (items) => {
+                    this.settings = { ...this.settings, ...items };
+                    resolve(this.settings);
+                });
+            } else {
+                resolve(this.settings);
+            }
+        });
+    }
+
+    applyTheme(element, platformKey) {
+        if (!element || !platformKey) return;
+
+        const themeId = (this.settings.themes && this.settings.themes[platformKey]) || DEFAULT_THEMES[platformKey] || "emerald";
+        const themeConfig = THEMES[themeId];
+        if (!themeConfig) return;
+
+        const isDark = this.getEffectiveDarkMode();
+        const colors = isDark ? themeConfig.dark : themeConfig.light;
+
+        element.style.setProperty("--toc-accent", colors.accent, "important");
+        element.style.setProperty("--toc-accent-light", colors.accentLight, "important");
+        element.style.setProperty("--toc-accent-hover", colors.accentHover, "important");
+
+        this.applyDarkMode(element);
+    }
+
+    applyDarkMode(element) {
+        const isDark = this.getEffectiveDarkMode();
+        if (isDark) {
+            element.classList.add("toc-dark");
+        } else {
+            element.classList.remove("toc-dark");
+        }
+
+        // Handle standalone elements like toast
+        const toast = document.querySelector(".toc-toast");
+        if (toast) {
+            if (isDark) toast.classList.add("toc-dark");
+            else toast.classList.remove("toc-dark");
+        }
+    }
+
+    getEffectiveDarkMode() {
+        const mode = this.settings.themeMode || "system";
+        if (mode === "dark") return true;
+        if (mode === "light") return false;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    }
+
+    onSettingsChanged(callback) {
+        const handler = (changes, area) => {
+            if (area === "local") {
+                for (let key in changes) {
+                    if (changes[key].newValue !== undefined) {
+                        this.settings[key] = changes[key].newValue;
+                    }
+                }
+                if (callback) callback(this.settings);
+            }
+        };
+
+        const api = (typeof chrome !== 'undefined' && chrome.storage) ? chrome : (typeof browser !== 'undefined' && browser.storage) ? browser : null;
+        if (api && api.storage) {
+            api.storage.onChanged.addListener(handler);
+        }
+    }
+};
+
+// =============================================================================
 // DragManager - Handles drag functionality for the TOC (mouse + touch)
 // =============================================================================
 
@@ -408,6 +495,7 @@ window.TOC.UI = class UI {
     constructor(siteConfig) {
         this.config = siteConfig;
         this.positionManager = new window.TOC.PositionManager(siteConfig.storageKey);
+        this.themeManager = new window.TOC.ThemeManager();
         this.searchManager = null;
         this.dragManager = null;
         this.createTimer = null; // Debounce timer
@@ -432,6 +520,14 @@ window.TOC.UI = class UI {
 
         // Global keyboard shortcut: Ctrl+Shift+T to toggle TOC
         document.addEventListener("keydown", (e) => this.handleGlobalShortcut(e));
+
+        // Listen for theme/settings changes from popup
+        this.themeManager.onSettingsChanged(() => {
+            const toc = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+            if (toc) {
+                this.themeManager.applyTheme(toc, this.config.platformKey);
+            }
+        });
     }
 
     handleGlobalShortcut(event) {
@@ -503,6 +599,12 @@ window.TOC.UI = class UI {
         }
 
         const tocContainer = this.buildTOCStructure(questions);
+
+        // Wait for ThemeManager settings to load before applying
+        this.themeManager.loadSettings().then(() => {
+            this.themeManager.applyTheme(tocContainer, this.config.platformKey);
+        });
+
         this.setupTOCFunctionality(tocContainer);
         this.applyInitialPosition(tocContainer);
 
@@ -522,7 +624,7 @@ window.TOC.UI = class UI {
 
         const tocContainer = document.createElement("div");
         tocContainer.id = CONSTANTS.IDS.TOC_CONTAINER;
-        tocContainer.classList.add(this.config.themeClass);
+        // Theme is now applied dynamically via ThemeManager
 
         // Header
         const tocHeader = document.createElement("div");
