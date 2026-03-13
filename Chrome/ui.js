@@ -215,14 +215,6 @@ window.TOC.DragManager = class DragManager {
         header.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
     }
 
-    // Get coordinates from mouse or touch event
-    getEventCoords(e) {
-        if (e.touches && e.touches.length > 0) {
-            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-        }
-        return { x: e.clientX, y: e.clientY };
-    }
-
     // =========== MOUSE EVENTS ===========
     startDrag(e) {
         const isToggleBtn = e.target.closest(`#${window.TOC.CONSTANTS.IDS.TOC_TOGGLE_BTN}`);
@@ -466,7 +458,8 @@ window.TOC.SearchManager = class SearchManager {
 
         this.allListItems.forEach((item) => {
             const text = item.querySelector("a").textContent.toLowerCase();
-            const shouldShow = searchTerm === "" || text.includes(searchTerm);
+            const answer = (item.getAttribute("data-answer") || "").toLowerCase();
+            const shouldShow = searchTerm === "" || text.includes(searchTerm) || answer.includes(searchTerm);
             item.style.display = shouldShow ? "block" : "none";
         });
     }
@@ -523,10 +516,10 @@ window.TOC.UI = class UI {
 
         // Listen for theme/settings changes from popup
         this.themeManager.onSettingsChanged(() => {
-            const toc = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
-            if (toc) {
-                this.themeManager.applyTheme(toc, this.config.platformKey);
-            }
+            // Reload settings first, then rebuild the TOC to reflect changes (e.g. showAnswers)
+            this.themeManager.loadSettings().then(() => {
+                this.createTOC();
+            });
         });
     }
 
@@ -677,7 +670,6 @@ window.TOC.UI = class UI {
         const searchClear = document.createElement("div");
         searchClear.id = CONSTANTS.IDS.SEARCH_CLEAR;
         searchClear.title = "Clear search";
-        searchClear.textContent = "×";
 
         searchContainer.appendChild(searchInput);
         searchContainer.appendChild(searchClear);
@@ -746,18 +738,32 @@ window.TOC.UI = class UI {
     }
 
     exportAsText(questions) {
-        const text = questions.map((q, i) => `${i + 1}. ${typeof q === "string" ? q : q.text}`).join("\n");
+        const showAnswers = this.themeManager.settings.showAnswers;
+        const text = questions.map((q, i) => {
+            const qText = typeof q === "string" ? q : q.text;
+            let line = `${i + 1}. Q: ${qText}`;
+            if (showAnswers && q.answer) {
+                line += `\n   A: ${q.answer}`;
+            }
+            return line;
+        }).join("\n\n");
         this.copyToClipboard(text, "Copied as text!");
     }
 
     exportAsMarkdown(questions) {
         const siteName = this.config.name;
         const date = new Date().toLocaleDateString();
+        const showAnswers = this.themeManager.settings.showAnswers;
         let md = `# ${siteName} Conversation Summary\n`;
         md += `_Exported on ${date}_\n\n`;
-        md += `## Queries (${questions.length})\n\n`;
+        md += `## ${showAnswers ? 'Conversation' : 'Queries'} (${questions.length})\n\n`;
         questions.forEach((q, i) => {
-            md += `${i + 1}. ${typeof q === "string" ? q : q.text}\n`;
+            const qText = typeof q === "string" ? q : q.text;
+            md += `${i + 1}. **Q:** ${qText}\n`;
+            if (showAnswers && q.answer) {
+                md += `   > **A:** ${q.answer}\n`;
+            }
+            md += `\n`;
         });
         this.copyToClipboard(md, "Copied as Markdown!");
     }
@@ -765,20 +771,33 @@ window.TOC.UI = class UI {
     downloadAsFile(questions, format) {
         const siteName = this.config.name;
         const date = new Date().toISOString().split("T")[0];
+        const showAnswers = this.themeManager.settings.showAnswers;
         let content, filename, mimeType;
 
         if (format === "md") {
             content = `# ${siteName} Conversation Summary\n`;
             content += `_Exported on ${date}_\n\n`;
-            content += `## Queries (${questions.length})\n\n`;
+            content += `## ${showAnswers ? 'Conversation' : 'Queries'} (${questions.length})\n\n`;
             questions.forEach((q, i) => {
-                content += `${i + 1}. ${typeof q === "string" ? q : q.text}\n`;
+                const qText = typeof q === "string" ? q : q.text;
+                content += `${i + 1}. **Q:** ${qText}\n`;
+                if (showAnswers && q.answer) {
+                    content += `   > **A:** ${q.answer}\n`;
+                }
+                content += `\n`;
             });
-            filename = `${siteName.toLowerCase()}-queries-${date}.md`;
+            filename = `${siteName.toLowerCase()}-${showAnswers ? 'conversation' : 'queries'}-${date}.md`;
             mimeType = "text/markdown";
         } else {
-            content = questions.map((q, i) => `${i + 1}. ${typeof q === "string" ? q : q.text}`).join("\n");
-            filename = `${siteName.toLowerCase()}-queries-${date}.txt`;
+            content = questions.map((q, i) => {
+                const qText = typeof q === "string" ? q : q.text;
+                let line = `${i + 1}. Q: ${qText}`;
+                if (showAnswers && q.answer) {
+                    line += `\n   A: ${q.answer}`;
+                }
+                return line;
+            }).join("\n\n");
+            filename = `${siteName.toLowerCase()}-${showAnswers ? 'conversation' : 'queries'}-${date}.txt`;
             mimeType = "text/plain";
         }
 
@@ -825,11 +844,13 @@ window.TOC.UI = class UI {
 
     populateTOCList(tocList, questions) {
         const CONSTANTS = window.TOC.CONSTANTS;
+        const showAnswers = this.themeManager.settings.showAnswers;
         const listItems = [];
 
         questions.forEach((item, index) => {
             const questionText = typeof item === "string" ? item : item.text;
             const element = typeof item === "string" ? null : item.element;
+            const answerText = (typeof item !== "string" && item.answer) ? item.answer : "";
 
             const shortText =
                 questionText.length > CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH
@@ -845,6 +866,10 @@ window.TOC.UI = class UI {
 
             const listItem = document.createElement("li");
             listItem.setAttribute("data-toc-num", index + 1);
+            // Store full answer text for deep search
+            if (answerText) {
+                listItem.setAttribute("data-answer", answerText);
+            }
 
             const link = document.createElement("a");
             link.href = `#${questionId}`;
@@ -861,18 +886,61 @@ window.TOC.UI = class UI {
                 }
             });
 
-            // Copy button
+            // Question row wrapper (provides positioning context for copy button)
+            const questionRow = document.createElement("div");
+            questionRow.className = "toc-question-row";
+            questionRow.appendChild(link);
+
+            // Copy button (copies the question only)
             const copyBtn = document.createElement("button");
             copyBtn.className = "toc-copy-btn";
             copyBtn.title = "Copy query";
             copyBtn.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.copyToClipboard(questionText, "Copied!");
+                this.copyToClipboard(questionText, "Query copied!");
             });
+            questionRow.appendChild(copyBtn);
+            listItem.appendChild(questionRow);
 
-            listItem.appendChild(link);
-            listItem.appendChild(copyBtn);
+            // Answer row (only when showAnswers is enabled and answer exists)
+            if (showAnswers && answerText) {
+                const answerRow = document.createElement("div");
+                answerRow.className = "toc-answer-row";
+
+                const answerContent = document.createElement("div");
+                answerContent.className = "toc-answer-content";
+
+                // AI badge icon (replaces the number badge)
+                const badge = document.createElement("div");
+                badge.className = "toc-answer-badge";
+
+                // Truncated answer text
+                const answerSpan = document.createElement("span");
+                answerSpan.className = "toc-answer-text";
+                const shortAnswer = answerText.length > CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH
+                    ? answerText.substring(0, CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH - 3) + CONSTANTS.CONSTRAINTS.TRUNCATE_SUFFIX
+                    : answerText;
+                answerSpan.textContent = shortAnswer;
+                answerSpan.title = answerText.substring(0, 500);
+
+                answerContent.appendChild(badge);
+                answerContent.appendChild(answerSpan);
+
+                // Answer copy button
+                const answerCopyBtn = document.createElement("button");
+                answerCopyBtn.className = "toc-answer-copy";
+                answerCopyBtn.title = "Copy answer";
+                answerCopyBtn.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.copyToClipboard(answerText, "Answer copied!");
+                });
+
+                answerRow.appendChild(answerContent);
+                answerRow.appendChild(answerCopyBtn);
+                listItem.appendChild(answerRow);
+            }
             tocList.appendChild(listItem);
             listItems.push(listItem);
         });

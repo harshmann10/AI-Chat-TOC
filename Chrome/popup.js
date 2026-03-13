@@ -13,6 +13,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Tab switching ────────────────────────────────────────────
     const tabs = document.querySelectorAll('.tab');
     const panels = document.querySelectorAll('.panel');
+    const indicator = document.querySelector('.tab-indicator');
+
+    function updateTabIndicator(activeTab) {
+        if (!indicator || !activeTab) return;
+        const index = Array.from(tabs).indexOf(activeTab);
+        const gap = 4;
+        const x = index * (activeTab.offsetWidth + gap);
+        indicator.style.transform = `translateX(${x}px)`;
+    }
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -20,8 +29,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             panels.forEach(p => p.classList.remove('active'));
             tab.classList.add('active');
             document.getElementById(tab.dataset.tab).classList.add('active');
+            updateTabIndicator(tab);
         });
     });
+
+    // Run initially for default active tab
+    setTimeout(() => updateTabIndicator(document.querySelector('.tab.active')), 10);
 
     // ── Load settings ────────────────────────────────────────────
     let settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -77,6 +90,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    // ── Show Answers toggle ──────────────────────────────────────
+    const showAnswersToggle = document.getElementById('toggle-show-answers');
+
+    function refreshShowAnswersUI() {
+        if (showAnswersToggle) {
+            showAnswersToggle.checked = !!settings.showAnswers;
+        }
+    }
+
+    if (showAnswersToggle) {
+        showAnswersToggle.addEventListener('change', () => {
+            settings.showAnswers = showAnswersToggle.checked;
+            saveKey('showAnswers', settings.showAnswers);
+        });
+    }
+
     // ── Platform theme cards ─────────────────────────────────────
     const platformList = document.getElementById('platform-list');
     const PLATFORMS = [
@@ -128,10 +157,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
         if (storageAPI) storageAPI.set(DEFAULT_SETTINGS);
         refreshModeUI();
+        refreshShowAnswersUI();
         renderPlatforms();
     });
 
     // ── Init ─────────────────────────────────────────────────────
     refreshModeUI();
+    refreshShowAnswersUI();
     renderPlatforms();
 });

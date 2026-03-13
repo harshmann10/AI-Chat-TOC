@@ -76,44 +76,91 @@ body {
 
 /* ── Tab Bar ──────────────────────────────────────────────────── */
 .tab-bar {
+    position: relative;
     display: flex;
     gap: 4px;
-    margin: 10px 16px 0;
+    margin: 12px 16px 4px;
     padding: 3px;
     background: var(--p-bg-card);
-    border-radius: 8px;
+    border-radius: 10px;
+    border: 1px solid var(--p-border);
+}
+
+.tab-indicator {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    background: var(--p-bg);
+    border-radius: 7px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1;
+    overflow: hidden;
+}
+
+.tab-indicator::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: var(--p-accent);
+    border-radius: 2px 2px 0 0;
+    opacity: 0.8;
 }
 
 .tab {
+    position: relative;
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 7px 0;
+    gap: 8px;
+    padding: 8px 0;
     border: none;
     background: transparent;
-    border-radius: 6px;
-    font-size: 12px;
+    border-radius: 7px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--p-text-dim);
     cursor: pointer;
-    transition: var(--p-transition);
+    transition: color 0.2s ease, transform 0.1s ease;
+    z-index: 2;
 }
 
 .tab:hover {
     color: var(--p-text);
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 7px;
+}
+
+.tab:active {
+    transform: scale(0.97);
 }
 
 .tab.active {
-    background: var(--p-bg);
     color: var(--p-text);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
     font-weight: 600;
 }
 
 .tab svg {
     flex-shrink: 0;
+    width: 15px;
+    height: 15px;
+    opacity: 0.5;
+    transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.tab:hover svg {
+    opacity: 0.8;
+}
+
+.tab.active svg {
+    opacity: 1;
+    color: var(--p-accent);
 }
 
 /* ── Panels ───────────────────────────────────────────────────── */
@@ -124,10 +171,23 @@ body {
 
 .panel {
     display: none;
+    animation: panelFadeIn 0.22s ease-out;
 }
 
 .panel.active {
     display: block;
+}
+
+@keyframes panelFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* ── Section Groups ───────────────────────────────────────────── */
@@ -294,36 +354,50 @@ body {
     flex-shrink: 0;
 }
 
-/* ── Future Settings Tab ──────────────────────────────────────── */
-.future-settings {
+/* ── Settings Tab ────────────────────────────────────────────── */
+.settings-group {
     margin-top: 14px;
 }
 
-.future-item {
+.setting-card {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--p-border);
-    opacity: 0.55;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--p-border);
+    border-radius: var(--p-radius);
+    background: var(--p-bg);
+    margin-bottom: 8px;
+    transition: var(--p-transition);
 }
 
-.future-item:last-child {
-    border-bottom: none;
+.setting-card:hover {
+    border-color: #cbd5e1;
 }
 
-.future-item-left {
+.setting-card.soon {
+    opacity: 0.65;
+    background: var(--p-bg-card);
+    cursor: not-allowed;
+}
+
+.setting-card:last-child {
+    margin-bottom: 0;
+}
+
+.setting-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
 }
 
-.future-label {
+.setting-label {
     font-size: 13px;
     font-weight: 500;
 }
 
-.future-desc {
+.setting-desc {
     font-size: 11px;
     color: var(--p-text-muted);
 }
@@ -340,6 +414,56 @@ body {
     flex-shrink: 0;
 }
 
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--p-bg-hover);
+    border: 1px solid var(--p-border);
+    border-radius: 22px;
+    transition: all 0.2s ease;
+}
+
+.toggle-slider::before {
+    content: "";
+    position: absolute;
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background: var(--p-text-muted);
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.toggle-switch input:checked+.toggle-slider {
+    background: var(--p-accent-bg);
+    border-color: var(--p-accent);
+}
+
+.toggle-switch input:checked+.toggle-slider::before {
+    transform: translateX(18px);
+    background: var(--p-accent);
+}
+
 /* ── Dark Mode (for the popup itself) ─────────────────────────── */
 body.dark-mode {
     --p-bg: #1e1e23;
@@ -354,13 +478,22 @@ body.dark-mode {
     --p-border: rgba(255, 255, 255, 0.12);
 }
 
-body.dark-mode .tab.active {
-    background: var(--p-bg-card);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .25);
+body.dark-mode .tab-indicator {
+    background: var(--p-bg-hover);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
-body.dark-mode .platform-card {
+body.dark-mode .tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .platform-card,
+body.dark-mode .setting-card {
     background: var(--p-bg-card);
+}
+
+body.dark-mode .setting-card.soon {
+    background: rgba(255, 255, 255, 0.03);
 }
 
 body.dark-mode .mode-option {
