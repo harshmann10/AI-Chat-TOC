@@ -14,29 +14,29 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 
 ## 🌐 Supported Platforms
 
-| Platform | Status | Accent Color |
-|----------|--------|--------------|
-| ChatGPT | ✅ | Green |
-| Gemini | ✅ | Blue |
-| Perplexity | ✅ | Teal |
-| Claude | ✅ | Orange |
-| Grok | ✅ | Black |
+| Platform   | Status | Accent Color |
+| ---------- | ------ | ------------ |
+| ChatGPT    | ✅     | Green        |
+| Gemini     | ✅     | Blue         |
+| Perplexity | ✅     | Teal         |
+| Claude     | ✅     | Orange       |
+| Grok       | ✅     | Black        |
 
 ---
 
 ## ✨ Features
 
-| Feature | Description |
-|---------|-------------|
-| 📋 **TOC Sidebar** | Lists all your queries in a navigable list |
-| 🔍 **Search** | Filter queries by keyword |
+| Feature                | Description                                 |
+| ---------------------- | ------------------------------------------- |
+| 📋 **TOC Sidebar**     | Lists all your queries in a navigable list  |
+| 🔍 **Search**          | Filter queries by keyword                   |
 | 🤖 **Show AI Answers** | Toggle inline AI response previews (v1.5.0) |
-| 🖱️ **Drag & Drop** | Reposition anywhere on screen |
-| 📱 **Mobile Friendly** | Touch support & responsive design |
-| 💾 **Position Memory** | Remembers position per-site |
-| 📤 **Export** | Copy/download as text or markdown |
-| 🌙 **Dark Mode** | Auto-adapts to system preference |
-| ⚡ **Optimized** | Minimal CPU usage |
+| 🖱️ **Drag & Drop**     | Reposition anywhere on screen               |
+| 📱 **Mobile Friendly** | Touch support & responsive design           |
+| 💾 **Position Memory** | Remembers position per-site                 |
+| 📤 **Export**          | Copy/download as text or markdown           |
+| 🌙 **Dark Mode**       | Auto-adapts to system preference            |
+| ⚡ **Optimized**       | Minimal CPU usage                           |
 
 ---
 
@@ -49,19 +49,45 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 [![Edge Web Store](https://img.shields.io/badge/Edge-Web%20Store-4285F4?logo=googlechrome)](https://microsoftedge.microsoft.com/addons/detail/ai-chat-toc/ciclciocehhjmkknjhnpaaligmffmpcb)
 
 ### Manual Installation
-```bash
-# Firefox
-about:debugging → Load Temporary Add-on → Firefox/manifest.json
 
-# Chrome/Edge  
-chrome://extensions → Developer mode → Load unpacked → Chrome folder
+Download the latest zip files from **[GitHub Releases](https://github.com/harshmann10/AI-Chat-TOC/releases)** or build them yourself:
+
+#### Using Pre-built Releases
+
+1. Go to [Releases](https://github.com/harshmann10/AI-Chat-TOC/releases)
+2. Download `chrome.zip` or `firefox.zip`
+3. Extract the zip file
+4. Load in your browser (see instructions below)
+
+#### Building Locally with PowerShell
+
+```powershell
+./build.ps1
 ```
+
+This generates `chrome.zip` and `firefox.zip` automatically.
+
+#### Loading the Extension
+
+**Firefox:**
+
+- Open `about:debugging#/runtime/this-firefox`
+- Click **Load Temporary Add-on**
+- Select the `manifest.json` from the extracted folder
+
+**Chrome/Edge:**
+
+- Open `chrome://extensions`
+- Enable **Developer mode**
+- Click **Load unpacked**
+- Select the extracted folder
 
 ---
 
 ## 📤 Export Options
 
 Click the **↓** button in the header:
+
 - 📋 Copy as Text
 - 📝 Copy as Markdown
 - 💾 Download as .txt
@@ -73,19 +99,33 @@ Click the **↓** button in the header:
 
 ```
 AI Chat TOC/
-├── Chrome/        # Manifest V3
-├── Firefox/       # Manifest V2  
+├── src/                           # Shared source code
+│   ├── main.js
+│   ├── popup.js
+│   ├── popup.html
+│   ├── popup.css
+│   ├── style.css
+│   ├── themes.js
+│   └── ui.js
+├── icons/                         # Extension icons
+├── manifests/                     # Manifest files
+│   ├── chrome_manifest.json       # Manifest V3 (Chrome/Edge)
+│   └── firefox_manifest.json      # Manifest V2 (Firefox)
+├── dev.ps1                        # Development script (generates dist/)
+├── build.ps1                      # Production build script
 ├── LICENSE
 └── README.md
 ```
+
+**Build Process:** The `build.ps1` script combines the `src/` folder with the appropriate manifest file to generate ready-to-use zip files for each platform.
 
 ---
 
 ## ⌨️ Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+T` | Toggle TOC visibility |
+| Shortcut       | Action                             |
+| -------------- | ---------------------------------- |
+| `Ctrl+Shift+T` | Toggle TOC visibility              |
 | 📋 Copy button | Hover over item to see copy button |
 
 ---
@@ -103,11 +143,35 @@ AI Chat TOC/
 
 ## 🛠️ Development
 
+### Build Scripts
+
+#### Local Testing (Development)
+
+```powershell
+./dev.ps1
+```
+
+Generates a `dist/` folder with:
+
+- `dist/chrome/` - Chrome/Edge version ready to load
+- `dist/firefox/` - Firefox version ready to load
+
+Use this when developing and testing locally.
+
+#### Production Build
+
+```powershell
+./build.ps1
+```
+
+Generates `chrome.zip` and `firefox.zip` for distribution. Use this before releasing.
+
 ### Adding a New Site
 
 1. Add config to `SITES` in `main.js`
-2. Add URL to `manifest.json`
-3. Add theme class to `style.css`
+2. Add URL patterns to both manifests in `manifests/`
+3. Add theme/accent color class to `style.css`
+4. Test with `dev.ps1` before building with `build.ps1`
 
 ---
 

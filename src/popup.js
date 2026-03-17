@@ -10,6 +10,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? browser.storage.local
             : null;
 
+    // ── Update version from manifest ────────────────────────────
+    const versionSpan = document.querySelector('.header-version');
+    if (versionSpan) {
+        const manifest = (typeof chrome !== 'undefined') ? chrome.runtime.getManifest() : browser.runtime.getManifest();
+        versionSpan.textContent = `v${manifest.version}`;
+    }
+
     // ── Tab switching ────────────────────────────────────────────
     const tabs = document.querySelectorAll('.tab');
     const panels = document.querySelectorAll('.panel');

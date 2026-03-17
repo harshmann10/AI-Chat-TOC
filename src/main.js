@@ -402,13 +402,13 @@ const SITES = {
     // =========================================================================
     grok: {
         name: "Grok",
-        host: ["grok.com", "x.com"],
+        host: "grok.com",
         platformKey: "grok",
         storageKey: "grok-toc-position",
         selectors: {
-            userMessage: ".message-bubble.bg-surface-l1, .user-message, [data-testid='user-message'], [data-testid='tweetText'][dir='auto'], .message-user, [data-testid='messageEntry']",
-            sendButton: "button[aria-label='Submit'], [data-testid='send-button'], [aria-label='Send Post']",
-            promptInput: "div.tiptap.ProseMirror, textarea[aria-label='Ask Grok anything'], [data-testid='tweetTextarea_0'], textarea, [contenteditable='true']",
+            userMessage: ".message-bubble.bg-surface-l1, .user-message, [data-testid='user-message'], .message-user",
+            sendButton: "button[aria-label='Submit'], [data-testid='send-button']",
+            promptInput: "div.tiptap.ProseMirror, textarea[aria-label='Ask Grok anything'], textarea, [contenteditable='true']",
         },
         delays: {
             pageLoad: 2500,
@@ -421,11 +421,6 @@ const SITES = {
         lastUrl: "",
 
         getQueries: function () {
-            // Only run on Grok pages if on x.com
-            if (location.host.includes("x.com") && !location.pathname.includes("grok")) {
-                return [];
-            }
-
             const possibleSelectors = this.selectors.userMessage.split(",").map(s => s.trim());
             let queries = [];
 
@@ -471,9 +466,7 @@ const SITES = {
         },
 
         setupMonitor: function (onUpdate) {
-            TOC_PERF.createSharedMonitor(this, onUpdate, {
-                extraGuard: () => !(location.host.includes("x.com") && !location.pathname.includes("grok"))
-            });
+            TOC_PERF.createSharedMonitor(this, onUpdate);
         },
     },
 };
@@ -487,12 +480,7 @@ const SITES = {
 
     for (const key in SITES) {
         const site = SITES[key];
-        if (Array.isArray(site.host)) {
-            if (site.host.some(h => location.host.includes(h))) {
-                activeAdapter = site;
-                break;
-            }
-        } else if (location.host.includes(site.host)) {
+        if (location.host.includes(site.host)) {
             activeAdapter = site;
             break;
         }

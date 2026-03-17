@@ -18,8 +18,7 @@
         "*://gemini.google.com/*",
         "*://www.perplexity.ai/*",
         "*://claude.ai/*",
-        "*://grok.com/*",
-        "*://x.com/*"
+        "*://grok.com/*"
     ],
     "content_scripts": [
         {
@@ -28,8 +27,7 @@
                 "*://gemini.google.com/*",
                 "*://www.perplexity.ai/*",
                 "*://claude.ai/*",
-                "*://grok.com/*",
-                "*://x.com/*"
+                "*://grok.com/*"
             ],
             "js": [
                 "themes.js",

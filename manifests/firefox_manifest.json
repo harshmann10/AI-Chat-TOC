@@ -13,7 +13,6 @@
         "*://www.perplexity.ai/*",
         "*://claude.ai/*",
         "*://grok.com/*",
-        "*://x.com/*",
         "storage"
     ],
     "browser_action": {
@@ -26,8 +25,7 @@
                 "*://gemini.google.com/*",
                 "*://www.perplexity.ai/*",
                 "*://claude.ai/*",
-                "*://grok.com/*",
-                "*://x.com/*"
+                "*://grok.com/*"
             ],
             "js": [
                 "themes.js",
