@@ -29,13 +29,13 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 | Feature                | Description                                 |
 | ---------------------- | ------------------------------------------- |
 | 📋 **TOC Sidebar**     | Lists all your queries in a navigable list  |
-| 🔍 **Search**          | Filter queries by keyword                   |
+| 🔍 **Search**          | Filter queries by keyword and AI answer text|
 | 🤖 **Show AI Answers** | Toggle inline AI response previews         |
+| 🌗 **Theme Mode**      | Light / Dark / System modes                 |
 | 🖱️ **Drag & Drop**     | Reposition anywhere on screen               |
 | 📱 **Mobile Friendly** | Touch support & responsive design           |
 | 💾 **Position Memory** | Remembers position per-site                 |
 | 📤 **Export**          | Copy/download as text or markdown           |
-| 🌙 **Dark Mode**       | Auto-adapts to system preference            |
 | ⚡ **Optimized**       | Minimal CPU usage                           |
 
 ---
