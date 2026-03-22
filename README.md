@@ -5,7 +5,7 @@
 A browser extension that adds a **Table of Contents** sidebar to AI chat interfaces. Never lose track of your conversation again!
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.5.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.6.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platforms-5-orange" alt="Platforms">
 </p>
@@ -30,7 +30,7 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 | ---------------------- | ------------------------------------------- |
 | 📋 **TOC Sidebar**     | Lists all your queries in a navigable list  |
 | 🔍 **Search**          | Filter queries by keyword                   |
-| 🤖 **Show AI Answers** | Toggle inline AI response previews (v1.5.0) |
+| 🤖 **Show AI Answers** | Toggle inline AI response previews         |
 | 🖱️ **Drag & Drop**     | Reposition anywhere on screen               |
 | 📱 **Mobile Friendly** | Touch support & responsive design           |
 | 💾 **Position Memory** | Remembers position per-site                 |
@@ -50,7 +50,7 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 
 ### Manual Installation
 
-Download the latest zip files from **[GitHub Releases](https://github.com/harshmann10/AI-Chat-TOC/releases)** or build them yourself:
+Download the latest zip files from **[GitHub Releases](https://github.com/harshmann10/AI-Chat-TOC/releases)**. If you want to build locally, use the **Build Scripts** section below:
 
 #### Using Pre-built Releases
 
@@ -58,14 +58,6 @@ Download the latest zip files from **[GitHub Releases](https://github.com/harshm
 2. Download `chrome.zip` or `firefox.zip`
 3. Extract the zip file
 4. Load in your browser (see instructions below)
-
-#### Building Locally with PowerShell
-
-```powershell
-./build.ps1
-```
-
-This generates `chrome.zip` and `firefox.zip` automatically.
 
 #### Loading the Extension
 
@@ -125,18 +117,24 @@ AI Chat TOC/
 
 | Shortcut       | Action                             |
 | -------------- | ---------------------------------- |
-| `Ctrl+Shift+T` | Toggle TOC visibility              |
+| `Ctrl+Shift+F` | Toggle TOC visibility (Customizable in browser) |
 | 📋 Copy button | Hover over item to see copy button |
+
+### How to Customize the Shortcut
+
+You can change the `Ctrl+Shift+F` shortcut natively in your browser:
+*   **Chrome / Edge**: Go to `chrome://extensions/shortcuts` (or `edge://extensions/shortcuts`), find "AI Chat TOC", and type your preferred key combination.
+*   **Firefox**: Go to `about:addons`, click the **Gear** icon ⚙️ in the top right, select **Manage Extension Shortcuts**, and update "AI Chat TOC".
 
 ---
 
 ## 🚀 Roadmap
 
-- [x] ~~Keyboard shortcut (Ctrl+Shift+T)~~
+- [x] ~~Keyboard shortcut (Ctrl+Shift+F, Customizable)~~
 - [x] ~~Copy button on each query~~
 - [x] ~~Grok support~~
 - [x] ~~Settings page (Theme Customization)~~
-- [x] ~~Show Answers in TOC (v1.5.0)~~
+- [x] ~~Show Answers in TOC~~
 - [ ] More AI platforms
 
 ---

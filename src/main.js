@@ -8,15 +8,12 @@
 // =============================================================================
 
 const TOC_PERF = {
-    // Throttle function - limits how often a function can be called
-    throttle: function (func, limit) {
-        let inThrottle = false;
+    // Debounce function - waits for activity to stop before firing
+    debounce: function (func, delay) {
+        let timeoutId;
         return function (...args) {
-            if (!inThrottle) {
-                func.apply(this, args);
-                inThrottle = true;
-                setTimeout(() => inThrottle = false, limit);
-            }
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => func.apply(this, args), delay);
         };
     },
 
@@ -31,7 +28,6 @@ const TOC_PERF = {
      * @param {function} onUpdate - Callback to trigger a TOC rebuild.
      * @param {object} [opts]
      * @param {number}   [opts.minQueries=1]    - Minimum query count required to trigger updates.
-     * @param {boolean}  [opts.listenPopstate]  - Also fire onUpdate on browser back/forward.
      * @param {function} [opts.extraGuard]       - Optional function returning false to skip the periodic tick.
      */
     createSharedMonitor: function (siteConfig, onUpdate, opts) {
@@ -40,26 +36,51 @@ const TOC_PERF = {
         siteConfig.lastUrl = location.href;
         siteConfig.lastQueryCount = 0;
 
-        // Throttled URL-change detection via MutationObserver
-        const throttledUrlCheck = TOC_PERF.throttle(() => {
+        const scheduleUpdate = TOC_PERF.debounce(() => {
             if (!TOC_PERF.isTabVisible()) return;
+            onUpdate();
+        }, siteConfig.delays.chatChange);
+
+        const handleUrlChange = () => {
+            if (!TOC_PERF.isTabVisible()) return;
+
             const currentUrl = location.href;
-            if (currentUrl !== siteConfig.lastUrl) {
-                siteConfig.lastUrl = currentUrl;
-                siteConfig.lastQueryCount = 0;
-                setTimeout(onUpdate, siteConfig.delays.chatChange);
-            }
-        }, 500);
+            if (currentUrl === siteConfig.lastUrl) return;
 
-        new MutationObserver(throttledUrlCheck).observe(document, { subtree: true, childList: true });
+            siteConfig.lastUrl = currentUrl;
+            siteConfig.lastQueryCount = 0;
+            scheduleUpdate();
+        };
 
-        // Optional: detect browser history navigation
-        if (o.listenPopstate) {
-            window.addEventListener("popstate", () => {
-                siteConfig.lastQueryCount = 0;
-                setTimeout(onUpdate, siteConfig.delays.chatChange);
-            });
+        if (!TOC_PERF._historyHooksInstalled) {
+            TOC_PERF._historyHooksInstalled = true;
+
+            const emitLocationChange = () => {
+                window.dispatchEvent(new Event("toc-locationchange"));
+            };
+
+            const patchHistoryMethod = (methodName) => {
+                const original = history[methodName];
+                if (typeof original !== "function" || original.__tocPatched) return;
+
+                const patched = function (...args) {
+                    const result = original.apply(this, args);
+                    emitLocationChange();
+                    return result;
+                };
+
+                patched.__tocPatched = true;
+                history[methodName] = patched;
+            };
+
+            patchHistoryMethod("pushState");
+            patchHistoryMethod("replaceState");
+
+            window.addEventListener("popstate", emitLocationChange);
+            window.addEventListener("hashchange", emitLocationChange);
         }
+
+        window.addEventListener("toc-locationchange", handleUrlChange);
 
         // Periodic safety-net check
         setInterval(() => {
@@ -71,14 +92,14 @@ const TOC_PERF = {
 
             if (!tocExists && currentQueries >= minQ) {
                 siteConfig.lastQueryCount = currentQueries;
-                onUpdate();
+                scheduleUpdate();
                 return;
             }
 
             if (currentQueries !== siteConfig.lastQueryCount) {
                 siteConfig.lastQueryCount = currentQueries;
                 if (currentQueries >= minQ) {
-                    onUpdate();
+                    scheduleUpdate();
                 } else {
                     const toc = document.getElementById("toc-extension");
                     if (toc) toc.remove();
@@ -125,6 +146,7 @@ const SITES = {
 
                 // Extract AI answer: walk up to the turn container, then find the assistant message
                 let answer = "";
+                let answerElement = null;
                 try {
                     // ChatGPT groups messages in turn containers
                     const turnContainer = el.closest('[data-testid^="conversation-turn"]') || el.closest('article') || el.parentElement;
@@ -133,6 +155,7 @@ const SITES = {
                         while (nextTurn) {
                             const assistantMsg = nextTurn.querySelector('[data-message-author-role="assistant"]');
                             if (assistantMsg) {
+                                answerElement = assistantMsg;
                                 answer = assistantMsg.textContent.trim();
                                 break;
                             }
@@ -143,13 +166,13 @@ const SITES = {
                     }
                 } catch (e) { /* silently ignore */ }
 
-                queries.push({ text, element: el, answer });
+                queries.push({ text, element: el, answer, answerElement });
             });
             return queries;
         },
 
         setupMonitor: function (onUpdate) {
-            TOC_PERF.createSharedMonitor(this, onUpdate, { listenPopstate: true });
+            TOC_PERF.createSharedMonitor(this, onUpdate);
         },
     },
 
@@ -195,6 +218,7 @@ const SITES = {
 
                     // Extract AI answer from the next sibling model response
                     let answer = "";
+                    let answerElement = null;
                     try {
                         const turnContainer = container.closest('.conversation-turn, [class*="turn"]') || container.parentElement;
                         if (turnContainer) {
@@ -202,6 +226,7 @@ const SITES = {
                             while (next) {
                                 const modelResp = next.querySelector('.model-response-text, .model-response, [class*="response"]');
                                 if (modelResp) {
+                                    answerElement = modelResp;
                                     answer = modelResp.textContent.trim();
                                     break;
                                 }
@@ -211,7 +236,7 @@ const SITES = {
                         }
                     } catch (e) { /* silently ignore */ }
 
-                    groups.push({ text, element: container, answer });
+                    groups.push({ text, element: container, answer, answerElement });
                 });
             } else {
                 const nodes = Array.from(document.querySelectorAll(this.selectors.userMessage));
@@ -232,10 +257,10 @@ const SITES = {
                         }
                         i = j - 1;
                         const text = parts.join(" ").replace(/\s+/g, " ").trim();
-                        if (text) groups.push({ text, element: el, answer: "" });
+                        if (text) groups.push({ text, element: el, answer: "", answerElement: null });
                     } else {
                         const text = el.textContent.replace(/\s+/g, " ").trim();
-                        if (text) groups.push({ text, element: el, answer: "" });
+                        if (text) groups.push({ text, element: el, answer: "", answerElement: null });
                     }
                 }
             }
@@ -285,17 +310,19 @@ const SITES = {
                     const text = el.textContent.trim();
                     // Extract answer from the next sibling answer block
                     let answer = "";
+                    let answerElement = null;
                     try {
                         const queryBlock = el.closest('[class*="group/query"]') || el.parentElement;
                         if (queryBlock) {
                             let next = queryBlock.nextElementSibling;
                             if (next) {
                                 const prose = next.querySelector('.prose, [class*="prose"]');
+                                answerElement = prose || next;
                                 answer = prose ? prose.textContent.trim() : next.textContent.trim();
                             }
                         }
                     } catch (e) { /* silently ignore */ }
-                    return { text, element: el, answer };
+                    return { text, element: el, answer, answerElement };
                 })
                 .filter((q) => q.text);
 
@@ -355,6 +382,7 @@ const SITES = {
                             const text = el.textContent.trim();
                             // Extract AI answer: find the next assistant response block
                             let answer = "";
+                            let answerElement = null;
                             try {
                                 const turnContainer = el.closest('[class*="turn"], [class*="row"]') || el.parentElement;
                                 if (turnContainer) {
@@ -362,11 +390,13 @@ const SITES = {
                                     while (next) {
                                         const aiMsg = next.querySelector('[data-testid="ai-message"], [class*="assistant"], [class*="response"]');
                                         if (aiMsg) {
+                                            answerElement = aiMsg;
                                             answer = aiMsg.textContent.trim();
                                             break;
                                         }
                                         // Check if the sibling itself is the AI response
                                         if (next.matches && (next.matches('[class*="assistant"]') || next.matches('[class*="response"]'))) {
+                                            answerElement = next;
                                             answer = next.textContent.trim();
                                             break;
                                         }
@@ -375,7 +405,7 @@ const SITES = {
                                     }
                                 }
                             } catch (e) { /* silently ignore */ }
-                            return { text, element: el, answer };
+                            return { text, element: el, answer, answerElement };
                         })
                         .filter((q) => q.text && q.text.length > 0);
                     if (queries.length > 0) break;
@@ -432,6 +462,7 @@ const SITES = {
                             const text = el.textContent.trim();
                             // Extract AI answer: find the next non-user message sibling
                             let answer = "";
+                            let answerElement = null;
                             try {
                                 const msgContainer = el.closest('[class*="message"], [class*="bubble"]') || el.parentElement;
                                 if (msgContainer) {
@@ -442,6 +473,7 @@ const SITES = {
                                         if (isUser) break;
                                         const responseText = next.textContent.trim();
                                         if (responseText) {
+                                            answerElement = next;
                                             answer = responseText;
                                             break;
                                         }
@@ -449,7 +481,7 @@ const SITES = {
                                     }
                                 }
                             } catch (e) { /* silently ignore */ }
-                            return { text, element: el, answer };
+                            return { text, element: el, answer, answerElement };
                         })
                         .filter((q) => q.text && q.text.length > 0);
                     if (queries.length > 0) break;

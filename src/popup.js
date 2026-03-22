@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     ];
 
     function renderPlatforms() {
-        platformList.innerHTML = '';
+        platformList.textContent = '';
 
         PLATFORMS.forEach(p => {
             const current = (settings.themes && settings.themes[p.key])

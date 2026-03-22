@@ -27,7 +27,6 @@ window.TOC.CONSTANTS = {
         PADDING: 10,
         MAX_QUERY_LENGTH: 70,
         TRUNCATE_SUFFIX: "...",
-        COLLAPSE_BREAKPOINT: 1024,
     },
 };
 
@@ -511,25 +510,23 @@ window.TOC.UI = class UI {
         document.addEventListener("click", (e) => this.handleDocumentClick(e), true);
         document.addEventListener("keydown", (e) => this.handleKeyDown(e), true);
 
-        // Global keyboard shortcut: Ctrl+Shift+T to toggle TOC
-        document.addEventListener("keydown", (e) => this.handleGlobalShortcut(e));
+        // Listen for messages from background script (Native Commands API)
+        const api = (typeof chrome !== 'undefined' && chrome.runtime) ? chrome : (typeof browser !== 'undefined' && browser.runtime) ? browser : null;
+        if (api) {
+            api.runtime.onMessage.addListener((request) => {
+                if (request.action === "toggle-toc") {
+                    this.toggleTOC();
+                }
+            });
+        }
 
         // Listen for theme/settings changes from popup
         this.themeManager.onSettingsChanged(() => {
             // Reload settings first, then rebuild the TOC to reflect changes (e.g. showAnswers)
             this.themeManager.loadSettings().then(() => {
-                this.createTOC();
+                this.createTOC(true);
             });
         });
-    }
-
-    handleGlobalShortcut(event) {
-        // Ctrl+Shift+T or Cmd+Shift+T to toggle TOC
-        if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "t") {
-            event.preventDefault();
-            event.stopPropagation();
-            this.toggleTOC();
-        }
     }
 
     toggleTOC() {
@@ -574,22 +571,24 @@ window.TOC.UI = class UI {
         }, 300);
     }
 
-    createTOC() {
+    createTOC(force = false) {
         // Prevent creating more than once per second
         const now = Date.now();
-        if (now - this.lastCreateTime < 1000) {
+        if (!force && now - this.lastCreateTime < 1000) {
             console.log("[TOC] Skipping - too soon since last create");
             return;
         }
         this.lastCreateTime = now;
-
-        this.removeExistingTOC();
 
         const questions = this.config.getQueries();
         if (questions.length === 0) {
             console.log("[TOC] No questions found, not creating TOC");
             return;
         }
+
+        // Remove existing TOC and do a full rebuild each time
+        const existingTOC = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+        if (existingTOC) existingTOC.remove();
 
         const tocContainer = this.buildTOCStructure(questions);
 
@@ -603,13 +602,6 @@ window.TOC.UI = class UI {
 
         document.body.appendChild(tocContainer);
         console.log(`[TOC] Created with ${questions.length} items`);
-    }
-
-    removeExistingTOC() {
-        const existingTOC = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
-        if (existingTOC) {
-            existingTOC.remove();
-        }
     }
 
     buildTOCStructure(questions) {
@@ -643,7 +635,7 @@ window.TOC.UI = class UI {
         exportBtn.title = "Export queries";
         exportBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            this.showExportMenu(tocContainer, questions);
+            this.showExportMenu(tocContainer);
         });
 
         const toggleBtn = document.createElement("button");
@@ -677,6 +669,40 @@ window.TOC.UI = class UI {
         // List
         const tocList = document.createElement("ul");
 
+        // --- EVENT DELEGATION: Handle all clicks on links and copy buttons in one place ---
+        tocList.addEventListener("click", (e) => {
+            const link = e.target.closest("a");
+            const qCopy = e.target.closest(".toc-copy-btn");
+            const aCopy = e.target.closest(".toc-answer-copy");
+
+            const answerNav = e.target.closest(".toc-answer-content[data-nav-id]");
+
+            if (link) {
+                e.preventDefault();
+                const questionId = link.getAttribute("href").substring(1);
+                const targetElement = document.getElementById(questionId);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+            } else if (answerNav && !e.target.closest(".toc-answer-copy")) {
+                e.preventDefault();
+                const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+            } else if (qCopy) {
+                e.preventDefault();
+                e.stopPropagation();
+                const text = qCopy.getAttribute("data-text");
+                this.copyToClipboard(text, "Query copied!");
+            } else if (aCopy) {
+                e.preventDefault();
+                e.stopPropagation();
+                const text = aCopy.getAttribute("data-text");
+                this.copyToClipboard(text, "Answer copied!");
+            }
+        });
+
         this.populateTOCList(tocList, questions);
 
         // Footer with count
@@ -695,13 +721,15 @@ window.TOC.UI = class UI {
         return tocContainer;
     }
 
-    showExportMenu(container, questions) {
+    showExportMenu(container) {
         // Remove existing menu if any
         const existingMenu = container.querySelector(".toc-export-menu");
         if (existingMenu) {
             existingMenu.remove();
             return;
         }
+
+        const questions = this.config.getQueries();
 
         const menu = document.createElement("div");
         menu.className = "toc-export-menu";
@@ -851,6 +879,7 @@ window.TOC.UI = class UI {
             const questionText = typeof item === "string" ? item : item.text;
             const element = typeof item === "string" ? null : item.element;
             const answerText = (typeof item !== "string" && item.answer) ? item.answer : "";
+            const answerElement = (typeof item !== "string" && item.answerElement) ? item.answerElement : null;
 
             const shortText =
                 questionText.length > CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH
@@ -859,14 +888,18 @@ window.TOC.UI = class UI {
                     : questionText;
 
             const questionId = `toc-question-${index}`;
+            const answerId = `toc-answer-${index}`;
 
             if (element) {
                 element.id = questionId;
             }
 
+            if (answerElement) {
+                answerElement.id = answerId;
+            }
+
             const listItem = document.createElement("li");
             listItem.setAttribute("data-toc-num", index + 1);
-            // Store full answer text for deep search
             if (answerText) {
                 listItem.setAttribute("data-answer", answerText);
             }
@@ -877,33 +910,19 @@ window.TOC.UI = class UI {
             link.textContent = shortText;
             link.title = questionText;
 
-            // Click - scroll to query
-            link.addEventListener("click", (e) => {
-                e.preventDefault();
-                const targetElement = document.getElementById(questionId);
-                if (targetElement) {
-                    targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
-                }
-            });
-
-            // Question row wrapper (provides positioning context for copy button)
             const questionRow = document.createElement("div");
             questionRow.className = "toc-question-row";
             questionRow.appendChild(link);
 
-            // Copy button (copies the question only)
+            // Copy button (stores text in data attribute for delegation)
             const copyBtn = document.createElement("button");
             copyBtn.className = "toc-copy-btn";
             copyBtn.title = "Copy query";
-            copyBtn.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.copyToClipboard(questionText, "Query copied!");
-            });
+            copyBtn.setAttribute("data-text", questionText);
+            
             questionRow.appendChild(copyBtn);
             listItem.appendChild(questionRow);
 
-            // Answer row (only when showAnswers is enabled and answer exists)
             if (showAnswers && answerText) {
                 const answerRow = document.createElement("div");
                 answerRow.className = "toc-answer-row";
@@ -911,11 +930,9 @@ window.TOC.UI = class UI {
                 const answerContent = document.createElement("div");
                 answerContent.className = "toc-answer-content";
 
-                // AI badge icon (replaces the number badge)
                 const badge = document.createElement("div");
                 badge.className = "toc-answer-badge";
 
-                // Truncated answer text
                 const answerSpan = document.createElement("span");
                 answerSpan.className = "toc-answer-text";
                 const shortAnswer = answerText.length > CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH
@@ -926,16 +943,13 @@ window.TOC.UI = class UI {
 
                 answerContent.appendChild(badge);
                 answerContent.appendChild(answerSpan);
+                answerContent.setAttribute("data-nav-id", answerElement ? answerId : questionId);
 
-                // Answer copy button
+                // Answer copy button (stores text in data attribute for delegation)
                 const answerCopyBtn = document.createElement("button");
                 answerCopyBtn.className = "toc-answer-copy";
                 answerCopyBtn.title = "Copy answer";
-                answerCopyBtn.addEventListener("click", (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.copyToClipboard(answerText, "Answer copied!");
-                });
+                answerCopyBtn.setAttribute("data-text", answerText);
 
                 answerRow.appendChild(answerContent);
                 answerRow.appendChild(answerCopyBtn);
@@ -967,22 +981,12 @@ window.TOC.UI = class UI {
         const searchClear = tocContainer.querySelector(`#${CONSTANTS.IDS.SEARCH_CLEAR}`);
         const listItems = Array.from(tocContainer.querySelectorAll("li"));
 
-        if (this.searchManager) {
-            this.searchManager.reset();
-        }
-
         this.searchManager = new window.TOC.SearchManager(searchInput, searchClear);
         this.searchManager.addListItems(listItems);
     }
 
     setupDragFunctionality(tocContainer) {
         this.dragManager = new window.TOC.DragManager(tocContainer, this.positionManager);
-    }
-
-    setupResponsiveCollapse(tocContainer) {
-        if (window.innerWidth <= window.TOC.CONSTANTS.CONSTRAINTS.COLLAPSE_BREAKPOINT) {
-            tocContainer.classList.add(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
-        }
     }
 
     applyInitialPosition(tocContainer) {
@@ -1036,7 +1040,7 @@ window.TOC.UI = class UI {
     handleDocumentClick(event) {
         const sendButton = this.config.selectors.sendButton;
         if (sendButton && event.target.closest(sendButton)) {
-            setTimeout(() => this.createTOC(), this.config.delays.promptSubmission);
+            this.debouncedCreateTOC();
         }
     }
 
@@ -1047,7 +1051,7 @@ window.TOC.UI = class UI {
             promptInput &&
             document.activeElement.matches(promptInput)
         ) {
-            setTimeout(() => this.createTOC(), this.config.delays.promptSubmission);
+            this.debouncedCreateTOC();
         }
     }
 };

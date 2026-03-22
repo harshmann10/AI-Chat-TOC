@@ -433,7 +433,7 @@
     font-weight: var(--toc-font-weight-normal);
     line-height: var(--toc-line-height);
     word-break: break-word;
-    cursor: default;
+    cursor: pointer;
     transition: all var(--toc-transition-fast);
 }
 
@@ -743,6 +743,7 @@
 }
 
 .toc-export-option {
+    position: relative;
     display: block;
     width: 100%;
     padding: var(--toc-spacing-sm) var(--toc-spacing-md);
@@ -758,8 +759,16 @@
 }
 
 .toc-export-option:hover {
-    background: var(--toc-bg-hover);
-    color: var(--toc-text-primary);
+    background: var(--toc-accent-light);
+    color: var(--toc-accent-hover);
+    transform: translateX(2px);
+}
+
+.toc-export-option:focus-visible {
+    background: var(--toc-accent-light);
+    color: var(--toc-accent-hover);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--toc-accent-light);
 }
 
 /* =================================================================== */

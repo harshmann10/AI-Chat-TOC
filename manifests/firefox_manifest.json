@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "AI Chat TOC",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Adds a Table of Contents to ChatGPT, Gemini, Perplexity, Claude, and Grok",
     "icons": {
         "48": "icons/icon48.png",
@@ -15,6 +15,19 @@
         "*://grok.com/*",
         "storage"
     ],
+    "background": {
+        "scripts": ["background.js"],
+        "persistent": false
+    },
+    "commands": {
+        "toggle-toc": {
+            "suggested_key": {
+                "default": "Ctrl+Shift+F",
+                "mac": "MacCtrl+Shift+F"
+            },
+            "description": "Toggle Table of Contents"
+        }
+    },
     "browser_action": {
         "default_popup": "popup.html"
     },
