@@ -23,6 +23,46 @@ const TOC_PERF = {
     },
 
     /**
+     * Fallback to find the AI answer by looking ahead in the DOM.
+     * Finds the first AI element that appears after the user element,
+     * ensuring it doesn't belong to the *next* user element.
+     */
+    findAnswerElement: function (userElement, aiSelector, userSelector) {
+        try {
+            const allAi = Array.from(document.querySelectorAll(aiSelector));
+            const allUser = Array.from(document.querySelectorAll(userSelector));
+
+            let nextUser = null;
+            for (let i = 0; i < allUser.length; i++) {
+                const u = allUser[i];
+                const pos = userElement.compareDocumentPosition(u);
+                if ((pos & Node.DOCUMENT_POSITION_FOLLOWING) && !(pos & Node.DOCUMENT_POSITION_CONTAINED_BY)) {
+                    nextUser = u;
+                    break;
+                }
+            }
+
+            for (let i = 0; i < allAi.length; i++) {
+                const ai = allAi[i];
+                const pos = userElement.compareDocumentPosition(ai);
+                if ((pos & Node.DOCUMENT_POSITION_FOLLOWING) && !(pos & Node.DOCUMENT_POSITION_CONTAINED_BY)) {
+                    if (nextUser) {
+                        const aiPosToNextUser = ai.compareDocumentPosition(nextUser);
+                        if (aiPosToNextUser & Node.DOCUMENT_POSITION_PRECEDING) {
+                            // The AI message is after the next user message, so it doesn't belong to this user message.
+                            return null;
+                        }
+                    }
+                    return ai;
+                }
+            }
+        } catch (e) {
+            console.debug(e);
+        }
+        return null;
+    },
+
+    /**
      * Shared monitor factory - eliminates per-site duplication.
      * @param {object} siteConfig - The SITES entry (has .getQueries, .delays, .lastQueryCount, .lastUrl)
      * @param {function} onUpdate - Callback to trigger a TOC rebuild.
@@ -236,6 +276,11 @@ const SITES = {
                         }
                     } catch (e) { /* silently ignore */ }
 
+                    if (!answerElement) {
+                        answerElement = TOC_PERF.findAnswerElement(container, '.model-response-text, .model-response, [class*="response"]', containerSelector);
+                        if (answerElement) answer = answerElement.textContent.trim();
+                    }
+
                     groups.push({ text, element: container, answer, answerElement });
                 });
             } else {
@@ -243,6 +288,7 @@ const SITES = {
                 for (let i = 0; i < nodes.length; i++) {
                     const el = nodes[i];
                     const isLine = el.classList && el.classList.contains("query-text-line");
+                    let text = "";
 
                     if (isLine) {
                         const prev = el.previousElementSibling;
@@ -256,11 +302,16 @@ const SITES = {
                             j++;
                         }
                         i = j - 1;
-                        const text = parts.join(" ").replace(/\s+/g, " ").trim();
-                        if (text) groups.push({ text, element: el, answer: "", answerElement: null });
+                        text = parts.join(" ").replace(/\s+/g, " ").trim();
                     } else {
-                        const text = el.textContent.replace(/\s+/g, " ").trim();
-                        if (text) groups.push({ text, element: el, answer: "", answerElement: null });
+                        text = el.textContent.replace(/\s+/g, " ").trim();
+                    }
+
+                    if (text) {
+                        let answer = "";
+                        let answerElement = TOC_PERF.findAnswerElement(el, '.model-response-text, .model-response, [class*="response"]', this.selectors.userMessage);
+                        if (answerElement) answer = answerElement.textContent.trim();
+                        groups.push({ text, element: el, answer, answerElement });
                     }
                 }
             }
@@ -322,14 +373,26 @@ const SITES = {
                             }
                         }
                     } catch (e) { /* silently ignore */ }
+
+                    if (!answerElement) {
+                        answerElement = TOC_PERF.findAnswerElement(el, '.prose, [class*="prose"]', "h1.group\\/query, div.group\\/query, .flex.flex-col.gap-1.pb-2");
+                        if (answerElement) answer = answerElement.textContent.trim();
+                    }
+
                     return { text, element: el, answer, answerElement };
                 })
                 .filter((q) => q.text);
 
             if (queries.length === 0) {
-                queryElements = document.querySelectorAll('[class*="pb-2"] .font-sans.text-textMain');
+                const fallbackSelector = '[class*="pb-2"] .font-sans.text-textMain';
+                queryElements = document.querySelectorAll(fallbackSelector);
                 queries = Array.from(queryElements)
-                    .map((el) => ({ text: el.textContent.trim(), element: el, answer: "" }))
+                    .map((el) => {
+                        let answer = "";
+                        let answerElement = TOC_PERF.findAnswerElement(el, '.prose, [class*="prose"]', fallbackSelector);
+                        if (answerElement) answer = answerElement.textContent.trim();
+                        return { text: el.textContent.trim(), element: el, answer, answerElement };
+                    })
                     .filter((q) => q.text);
             }
 
@@ -405,6 +468,12 @@ const SITES = {
                                     }
                                 }
                             } catch (e) { /* silently ignore */ }
+
+                            if (!answerElement) {
+                                answerElement = TOC_PERF.findAnswerElement(el, '[data-testid="ai-message"], .font-claude-message, [class*="assistant"], [class*="response"]', selector);
+                                if (answerElement) answer = answerElement.textContent.trim();
+                            }
+
                             return { text, element: el, answer, answerElement };
                         })
                         .filter((q) => q.text && q.text.length > 0);
@@ -481,6 +550,12 @@ const SITES = {
                                     }
                                 }
                             } catch (e) { /* silently ignore */ }
+
+                            if (!answerElement) {
+                                answerElement = TOC_PERF.findAnswerElement(el, '.message-bubble:not(.bg-surface-l1), [class*="assistant"]', selector);
+                                if (answerElement) answer = answerElement.textContent.trim();
+                            }
+
                             return { text, element: el, answer, answerElement };
                         })
                         .filter((q) => q.text && q.text.length > 0);
