@@ -27,10 +27,10 @@ const TOC_PERF = {
      * Finds the first AI element that appears after the user element,
      * ensuring it doesn't belong to the *next* user element.
      */
-    findAnswerElement: function (userElement, aiSelector, userSelector) {
+    findAnswerElement: function (userElement, aiElements, userElements) {
         try {
-            const allAi = Array.from(document.querySelectorAll(aiSelector));
-            const allUser = Array.from(document.querySelectorAll(userSelector));
+            const allAi = Array.isArray(aiElements) ? aiElements : Array.from(document.querySelectorAll(aiElements));
+            const allUser = Array.isArray(userElements) ? userElements : Array.from(document.querySelectorAll(userElements));
 
             let nextUser = null;
             for (let i = 0; i < allUser.length; i++) {
@@ -49,7 +49,6 @@ const TOC_PERF = {
                     if (nextUser) {
                         const aiPosToNextUser = ai.compareDocumentPosition(nextUser);
                         if (aiPosToNextUser & Node.DOCUMENT_POSITION_PRECEDING) {
-                            // The AI message is after the next user message, so it doesn't belong to this user message.
                             return null;
                         }
                     }
@@ -244,8 +243,10 @@ const SITES = {
             const containerSelector = ".user-message, .query";
             const containers = Array.from(document.querySelectorAll(containerSelector));
             const groups = [];
+            const geminiAiSelector = '.model-response-text, .model-response, [class*="response"]';
 
             if (containers.length) {
+                const aiElements = Array.from(document.querySelectorAll(geminiAiSelector));
                 containers.forEach((container) => {
                     const lineNodes = Array.from(container.querySelectorAll(".query-text-line"));
                     let text;
@@ -277,7 +278,7 @@ const SITES = {
                     } catch (e) { /* silently ignore */ }
 
                     if (!answerElement) {
-                        answerElement = TOC_PERF.findAnswerElement(container, '.model-response-text, .model-response, [class*="response"]', containerSelector);
+                        answerElement = TOC_PERF.findAnswerElement(container, aiElements, containers);
                         if (answerElement) answer = answerElement.textContent.trim();
                     }
 
@@ -285,6 +286,7 @@ const SITES = {
                 });
             } else {
                 const nodes = Array.from(document.querySelectorAll(this.selectors.userMessage));
+                const aiElements = Array.from(document.querySelectorAll(geminiAiSelector));
                 for (let i = 0; i < nodes.length; i++) {
                     const el = nodes[i];
                     const isLine = el.classList && el.classList.contains("query-text-line");
@@ -309,7 +311,7 @@ const SITES = {
 
                     if (text) {
                         let answer = "";
-                        let answerElement = TOC_PERF.findAnswerElement(el, '.model-response-text, .model-response, [class*="response"]', this.selectors.userMessage);
+                        let answerElement = TOC_PERF.findAnswerElement(el, aiElements, nodes);
                         if (answerElement) answer = answerElement.textContent.trim();
                         groups.push({ text, element: el, answer, answerElement });
                     }
@@ -356,6 +358,9 @@ const SITES = {
 
         getQueries: function () {
             let queryElements = document.querySelectorAll("h1.group\\/query, div.group\\/query, .flex.flex-col.gap-1.pb-2");
+            const perplexityAiSelector = '.prose, [class*="prose"]';
+            let aiElements = Array.from(document.querySelectorAll(perplexityAiSelector));
+
             let queries = Array.from(queryElements)
                 .map((el) => {
                     const text = el.textContent.trim();
@@ -375,7 +380,7 @@ const SITES = {
                     } catch (e) { /* silently ignore */ }
 
                     if (!answerElement) {
-                        answerElement = TOC_PERF.findAnswerElement(el, '.prose, [class*="prose"]', "h1.group\\/query, div.group\\/query, .flex.flex-col.gap-1.pb-2");
+                        answerElement = TOC_PERF.findAnswerElement(el, aiElements, Array.from(queryElements));
                         if (answerElement) answer = answerElement.textContent.trim();
                     }
 
@@ -386,10 +391,11 @@ const SITES = {
             if (queries.length === 0) {
                 const fallbackSelector = '[class*="pb-2"] .font-sans.text-textMain';
                 queryElements = document.querySelectorAll(fallbackSelector);
+                aiElements = Array.from(document.querySelectorAll(perplexityAiSelector));
                 queries = Array.from(queryElements)
                     .map((el) => {
                         let answer = "";
-                        let answerElement = TOC_PERF.findAnswerElement(el, '.prose, [class*="prose"]', fallbackSelector);
+                        let answerElement = TOC_PERF.findAnswerElement(el, aiElements, Array.from(queryElements));
                         if (answerElement) answer = answerElement.textContent.trim();
                         return { text: el.textContent.trim(), element: el, answer, answerElement };
                     })
@@ -436,11 +442,14 @@ const SITES = {
             ];
 
             let queries = [];
+            const claudeAiSelector = '[data-testid="ai-message"], .font-claude-message, [class*="assistant"], [class*="response"]';
+            const aiElements = Array.from(document.querySelectorAll(claudeAiSelector));
 
             for (const selector of selectors) {
                 const elements = document.querySelectorAll(selector);
                 if (elements.length > 0) {
-                    queries = Array.from(elements)
+                    const elementsArr = Array.from(elements);
+                    queries = elementsArr
                         .map((el) => {
                             const text = el.textContent.trim();
                             // Extract AI answer: find the next assistant response block
@@ -470,7 +479,7 @@ const SITES = {
                             } catch (e) { /* silently ignore */ }
 
                             if (!answerElement) {
-                                answerElement = TOC_PERF.findAnswerElement(el, '[data-testid="ai-message"], .font-claude-message, [class*="assistant"], [class*="response"]', selector);
+                                answerElement = TOC_PERF.findAnswerElement(el, aiElements, elementsArr);
                                 if (answerElement) answer = answerElement.textContent.trim();
                             }
 
@@ -522,11 +531,14 @@ const SITES = {
         getQueries: function () {
             const possibleSelectors = this.selectors.userMessage.split(",").map(s => s.trim());
             let queries = [];
+            const grokAiSelector = '.message-bubble:not(.bg-surface-l1), [class*="assistant"]';
+            const aiElements = Array.from(document.querySelectorAll(grokAiSelector));
 
             for (const selector of possibleSelectors) {
                 const elements = document.querySelectorAll(selector);
                 if (elements.length > 0) {
-                    queries = Array.from(elements)
+                    const elementsArr = Array.from(elements);
+                    queries = elementsArr
                         .map((el) => {
                             const text = el.textContent.trim();
                             // Extract AI answer: find the next non-user message sibling
@@ -552,7 +564,7 @@ const SITES = {
                             } catch (e) { /* silently ignore */ }
 
                             if (!answerElement) {
-                                answerElement = TOC_PERF.findAnswerElement(el, '.message-bubble:not(.bg-surface-l1), [class*="assistant"]', selector);
+                                answerElement = TOC_PERF.findAnswerElement(el, aiElements, elementsArr);
                                 if (answerElement) answer = answerElement.textContent.trim();
                             }
 
