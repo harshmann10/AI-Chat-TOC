@@ -23,6 +23,54 @@ const TOC_PERF = {
     },
 
     /**
+     * Fallback to find the AI answer by looking ahead in the DOM.
+     * Finds the first AI element that appears after the user element,
+     * ensuring it doesn't belong to the *next* user element.
+     */
+    findAnswerElement: function (userElement, aiElements, userElements) {
+        try {
+            const allAi = Array.isArray(aiElements) ? aiElements : Array.from(document.querySelectorAll(aiElements));
+            const allUser = Array.isArray(userElements) ? userElements : Array.from(document.querySelectorAll(userElements));
+
+            // Helper to find the main chat bubble/wrapper for an element
+            const getWrapper = (el) => el.closest('.conversation-turn, [class*="turn"], [class*="message-wrapper"], article, [class*="group"]') || el.parentElement;
+            const currentWrapper = getWrapper(userElement);
+
+            let nextUser = null;
+            for (let i = 0; i < allUser.length; i++) {
+                const u = allUser[i];
+                const pos = userElement.compareDocumentPosition(u);
+
+                if ((pos & Node.DOCUMENT_POSITION_FOLLOWING) && !(pos & Node.DOCUMENT_POSITION_CONTAINED_BY)) {
+                    // FIX: Ignore this element if it is just a file attachment or split text inside the SAME chat bubble
+                    if (currentWrapper && getWrapper(u) === currentWrapper) {
+                        continue;
+                    }
+                    nextUser = u;
+                    break;
+                }
+            }
+
+            for (let i = 0; i < allAi.length; i++) {
+                const ai = allAi[i];
+                const pos = userElement.compareDocumentPosition(ai);
+                if ((pos & Node.DOCUMENT_POSITION_FOLLOWING) && !(pos & Node.DOCUMENT_POSITION_CONTAINED_BY)) {
+                    if (nextUser) {
+                        const aiPosToNextUser = ai.compareDocumentPosition(nextUser);
+                        if (aiPosToNextUser & Node.DOCUMENT_POSITION_PRECEDING) {
+                            return null;
+                        }
+                    }
+                    return ai;
+                }
+            }
+        } catch (e) {
+            console.debug(e);
+        }
+        return null;
+    },
+
+    /**
      * Shared monitor factory - eliminates per-site duplication.
      * @param {object} siteConfig - The SITES entry (has .getQueries, .delays, .lastQueryCount, .lastUrl)
      * @param {function} onUpdate - Callback to trigger a TOC rebuild.
@@ -204,8 +252,10 @@ const SITES = {
             const containerSelector = ".user-message, .query";
             const containers = Array.from(document.querySelectorAll(containerSelector));
             const groups = [];
+            const geminiAiSelector = '.model-response-text, .model-response, [class*="response"]';
 
             if (containers.length) {
+                const aiElements = Array.from(document.querySelectorAll(geminiAiSelector));
                 containers.forEach((container) => {
                     const lineNodes = Array.from(container.querySelectorAll(".query-text-line"));
                     let text;
@@ -236,13 +286,20 @@ const SITES = {
                         }
                     } catch (e) { /* silently ignore */ }
 
+                    if (!answerElement) {
+                        answerElement = TOC_PERF.findAnswerElement(container, aiElements, containers);
+                        if (answerElement) answer = answerElement.textContent.trim();
+                    }
+
                     groups.push({ text, element: container, answer, answerElement });
                 });
             } else {
                 const nodes = Array.from(document.querySelectorAll(this.selectors.userMessage));
+                const aiElements = Array.from(document.querySelectorAll(geminiAiSelector));
                 for (let i = 0; i < nodes.length; i++) {
                     const el = nodes[i];
                     const isLine = el.classList && el.classList.contains("query-text-line");
+                    let text = "";
 
                     if (isLine) {
                         const prev = el.previousElementSibling;
@@ -256,11 +313,16 @@ const SITES = {
                             j++;
                         }
                         i = j - 1;
-                        const text = parts.join(" ").replace(/\s+/g, " ").trim();
-                        if (text) groups.push({ text, element: el, answer: "", answerElement: null });
+                        text = parts.join(" ").replace(/\s+/g, " ").trim();
                     } else {
-                        const text = el.textContent.replace(/\s+/g, " ").trim();
-                        if (text) groups.push({ text, element: el, answer: "", answerElement: null });
+                        text = el.textContent.replace(/\s+/g, " ").trim();
+                    }
+
+                    if (text) {
+                        let answer = "";
+                        let answerElement = TOC_PERF.findAnswerElement(el, aiElements, nodes);
+                        if (answerElement) answer = answerElement.textContent.trim();
+                        groups.push({ text, element: el, answer, answerElement });
                     }
                 }
             }
@@ -305,6 +367,9 @@ const SITES = {
 
         getQueries: function () {
             let queryElements = document.querySelectorAll("h1.group\\/query, div.group\\/query, .flex.flex-col.gap-1.pb-2");
+            const perplexityAiSelector = '.prose, [class*="prose"]';
+            let aiElements = Array.from(document.querySelectorAll(perplexityAiSelector));
+
             let queries = Array.from(queryElements)
                 .map((el) => {
                     const text = el.textContent.trim();
@@ -322,14 +387,27 @@ const SITES = {
                             }
                         }
                     } catch (e) { /* silently ignore */ }
+
+                    if (!answerElement) {
+                        answerElement = TOC_PERF.findAnswerElement(el, aiElements, Array.from(queryElements));
+                        if (answerElement) answer = answerElement.textContent.trim();
+                    }
+
                     return { text, element: el, answer, answerElement };
                 })
                 .filter((q) => q.text);
 
             if (queries.length === 0) {
-                queryElements = document.querySelectorAll('[class*="pb-2"] .font-sans.text-textMain');
+                const fallbackSelector = '[class*="pb-2"] .font-sans.text-textMain';
+                queryElements = document.querySelectorAll(fallbackSelector);
+                aiElements = Array.from(document.querySelectorAll(perplexityAiSelector));
                 queries = Array.from(queryElements)
-                    .map((el) => ({ text: el.textContent.trim(), element: el, answer: "" }))
+                    .map((el) => {
+                        let answer = "";
+                        let answerElement = TOC_PERF.findAnswerElement(el, aiElements, Array.from(queryElements));
+                        if (answerElement) answer = answerElement.textContent.trim();
+                        return { text: el.textContent.trim(), element: el, answer, answerElement };
+                    })
                     .filter((q) => q.text);
             }
 
@@ -373,11 +451,14 @@ const SITES = {
             ];
 
             let queries = [];
+            const claudeAiSelector = '[data-testid="ai-message"], .font-claude-message, [class*="assistant"], [class*="response"]';
+            const aiElements = Array.from(document.querySelectorAll(claudeAiSelector));
 
             for (const selector of selectors) {
                 const elements = document.querySelectorAll(selector);
                 if (elements.length > 0) {
-                    queries = Array.from(elements)
+                    const elementsArr = Array.from(elements);
+                    queries = elementsArr
                         .map((el) => {
                             const text = el.textContent.trim();
                             // Extract AI answer: find the next assistant response block
@@ -405,6 +486,12 @@ const SITES = {
                                     }
                                 }
                             } catch (e) { /* silently ignore */ }
+
+                            if (!answerElement) {
+                                answerElement = TOC_PERF.findAnswerElement(el, aiElements, elementsArr);
+                                if (answerElement) answer = answerElement.textContent.trim();
+                            }
+
                             return { text, element: el, answer, answerElement };
                         })
                         .filter((q) => q.text && q.text.length > 0);
@@ -453,11 +540,14 @@ const SITES = {
         getQueries: function () {
             const possibleSelectors = this.selectors.userMessage.split(",").map(s => s.trim());
             let queries = [];
+            const grokAiSelector = '.message-bubble:not(.bg-surface-l1), [class*="assistant"]';
+            const aiElements = Array.from(document.querySelectorAll(grokAiSelector));
 
             for (const selector of possibleSelectors) {
                 const elements = document.querySelectorAll(selector);
                 if (elements.length > 0) {
-                    queries = Array.from(elements)
+                    const elementsArr = Array.from(elements);
+                    queries = elementsArr
                         .map((el) => {
                             const text = el.textContent.trim();
                             // Extract AI answer: find the next non-user message sibling
@@ -481,6 +571,12 @@ const SITES = {
                                     }
                                 }
                             } catch (e) { /* silently ignore */ }
+
+                            if (!answerElement) {
+                                answerElement = TOC_PERF.findAnswerElement(el, aiElements, elementsArr);
+                                if (answerElement) answer = answerElement.textContent.trim();
+                            }
+
                             return { text, element: el, answer, answerElement };
                         })
                         .filter((q) => q.text && q.text.length > 0);
