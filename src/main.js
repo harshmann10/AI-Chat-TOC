@@ -32,11 +32,20 @@ const TOC_PERF = {
             const allAi = Array.isArray(aiElements) ? aiElements : Array.from(document.querySelectorAll(aiElements));
             const allUser = Array.isArray(userElements) ? userElements : Array.from(document.querySelectorAll(userElements));
 
+            // Helper to find the main chat bubble/wrapper for an element
+            const getWrapper = (el) => el.closest('.conversation-turn, [class*="turn"], [class*="message-wrapper"], article, [class*="group"]') || el.parentElement;
+            const currentWrapper = getWrapper(userElement);
+
             let nextUser = null;
             for (let i = 0; i < allUser.length; i++) {
                 const u = allUser[i];
                 const pos = userElement.compareDocumentPosition(u);
+
                 if ((pos & Node.DOCUMENT_POSITION_FOLLOWING) && !(pos & Node.DOCUMENT_POSITION_CONTAINED_BY)) {
+                    // FIX: Ignore this element if it is just a file attachment or split text inside the SAME chat bubble
+                    if (currentWrapper && getWrapper(u) === currentWrapper) {
+                        continue;
+                    }
                     nextUser = u;
                     break;
                 }
