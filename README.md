@@ -5,7 +5,7 @@
 A browser extension that adds a **Table of Contents** sidebar to AI chat interfaces. Never lose track of your conversation again!
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.6.1-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.7.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platforms-5-orange" alt="Platforms">
 </p>
@@ -135,9 +135,7 @@ You can change the `Ctrl+Shift+F` shortcut natively in your browser:
 - [x] ~~Grok support~~
 - [x] ~~Settings page (Theme Customization)~~
 - [x] ~~Show Answers in TOC~~
-- [ ] More AI platforms
-
----
+- [ ] More AI platforms---
 
 ## 🛠️ Development
 

@@ -189,8 +189,8 @@ const SITES = {
             const queryElements = document.querySelectorAll(this.selectors.userMessage);
             const queries = [];
             queryElements.forEach((el) => {
-                const text = el.textContent.trim();
-                if (!text) return;
+                let text = el.textContent.trim();
+                if (!text) text = "[Attachment]";
 
                 // Extract AI answer: walk up to the turn container, then find the assistant message
                 let answer = "";
@@ -233,7 +233,7 @@ const SITES = {
         platformKey: "gemini",
         storageKey: "gemini-toc-position",
         selectors: {
-            userMessage: ".query-text-line, .user-message, .query",
+            userMessage: ".query-text-line, .user-message, .query, user-query",
             sendButton: '[data-testid="submit-button"], button[type="submit"]',
             promptInput: "textarea, #ask-input",
             chatContainer: "main, [role='main']",
@@ -249,7 +249,7 @@ const SITES = {
         lastUrl: "",
 
         getQueries: function () {
-            const containerSelector = ".user-message, .query";
+            const containerSelector = ".user-message, .query, user-query";
             const containers = Array.from(document.querySelectorAll(containerSelector));
             const groups = [];
             const geminiAiSelector = '.model-response-text, .model-response, [class*="response"]';
@@ -264,7 +264,7 @@ const SITES = {
                     } else {
                         text = container.textContent.replace(/\s+/g, " ").trim();
                     }
-                    if (!text) return;
+                    if (!text) text = "[Attachment]";
 
                     // Extract AI answer from the next sibling model response
                     let answer = "";
@@ -318,12 +318,12 @@ const SITES = {
                         text = el.textContent.replace(/\s+/g, " ").trim();
                     }
 
-                    if (text) {
-                        let answer = "";
-                        let answerElement = TOC_PERF.findAnswerElement(el, aiElements, nodes);
-                        if (answerElement) answer = answerElement.textContent.trim();
-                        groups.push({ text, element: el, answer, answerElement });
-                    }
+                    if (!text) text = "[Attachment]";
+
+                    let answer = "";
+                    let answerElement = TOC_PERF.findAnswerElement(el, aiElements, nodes);
+                    if (answerElement) answer = answerElement.textContent.trim();
+                    groups.push({ text, element: el, answer, answerElement });
                 }
             }
 
@@ -331,6 +331,7 @@ const SITES = {
             return groups.filter((g) => {
                 const lower = g.text.toLowerCase();
                 if (lower.startsWith("hello,")) return false;
+                if (lower === "[attachment]") return true;
                 if (seen.has(lower)) return false;
                 seen.add(lower);
                 return true;
@@ -372,7 +373,8 @@ const SITES = {
 
             let queries = Array.from(queryElements)
                 .map((el) => {
-                    const text = el.textContent.trim();
+                    let text = el.textContent.trim();
+                    if (!text) text = "[Attachment]";
                     // Extract answer from the next sibling answer block
                     let answer = "";
                     let answerElement = null;
@@ -406,7 +408,9 @@ const SITES = {
                         let answer = "";
                         let answerElement = TOC_PERF.findAnswerElement(el, aiElements, Array.from(queryElements));
                         if (answerElement) answer = answerElement.textContent.trim();
-                        return { text: el.textContent.trim(), element: el, answer, answerElement };
+                        let text = el.textContent.trim();
+                        if (!text) text = "[Attachment]";
+                        return { text, element: el, answer, answerElement };
                     })
                     .filter((q) => q.text);
             }
@@ -428,7 +432,7 @@ const SITES = {
         platformKey: "claude",
         storageKey: "claude-toc-position",
         selectors: {
-            userMessage: '[data-testid="user-message"], .human-message, [class*="human"]',
+            userMessage: '[data-testid="user-message"], .human-message, [class*="human"], [class*="font-user-message"], .flex-wrap.justify-end',
             sendButton: '[data-testid="send-button"], button[type="submit"]',
             promptInput: '[contenteditable="true"], textarea',
         },
@@ -443,69 +447,101 @@ const SITES = {
         lastUrl: "",
 
         getQueries: function () {
-            const selectors = [
-                '[data-testid="user-message"]',
-                '.human-message',
-                '[class*="human"] [class*="message"]',
-                '.prose[class*="human"]'
-            ];
+            const queries = [];
 
-            let queries = [];
-            const claudeAiSelector = '[data-testid="ai-message"], .font-claude-message, [class*="assistant"], [class*="response"]';
-            const aiElements = Array.from(document.querySelectorAll(claudeAiSelector));
+            // Primary approach: walk each user turn via .mb-1.mt-6.group wrappers.
+            // This covers BOTH text messages and attachment-only messages in one pass.
+            const turnWrappers = Array.from(document.querySelectorAll('.mb-1.mt-6.group'));
 
-            for (const selector of selectors) {
-                const elements = document.querySelectorAll(selector);
-                if (elements.length > 0) {
-                    const elementsArr = Array.from(elements);
-                    queries = elementsArr
-                        .map((el) => {
-                            const text = el.textContent.trim();
-                            // Extract AI answer: find the next assistant response block
-                            let answer = "";
-                            let answerElement = null;
-                            try {
-                                const turnContainer = el.closest('[class*="turn"], [class*="row"]') || el.parentElement;
-                                if (turnContainer) {
-                                    let next = turnContainer.nextElementSibling;
-                                    while (next) {
-                                        const aiMsg = next.querySelector('[data-testid="ai-message"], [class*="assistant"], [class*="response"]');
-                                        if (aiMsg) {
-                                            answerElement = aiMsg;
-                                            answer = aiMsg.textContent.trim();
-                                            break;
-                                        }
-                                        // Check if the sibling itself is the AI response
-                                        if (next.matches && (next.matches('[class*="assistant"]') || next.matches('[class*="response"]'))) {
-                                            answerElement = next;
-                                            answer = next.textContent.trim();
-                                            break;
-                                        }
-                                        if (next.querySelector('[data-testid="user-message"], [class*="human"]')) break;
-                                        next = next.nextElementSibling;
-                                    }
-                                }
-                            } catch (e) { /* silently ignore */ }
+            if (turnWrappers.length > 0) {
+                const aiSelector = '.font-claude-response, .font-claude-response-body, [data-testid="ai-message"]';
 
-                            if (!answerElement) {
-                                answerElement = TOC_PERF.findAnswerElement(el, aiElements, elementsArr);
-                                if (answerElement) answer = answerElement.textContent.trim();
-                            }
+                for (const turn of turnWrappers) {
+                    const userMsgEl = turn.querySelector('[data-testid="user-message"]');
+                    const hasAttachment = !!turn.querySelector('[data-testid="file-thumbnail"]');
 
-                            return { text, element: el, answer, answerElement };
-                        })
-                        .filter((q) => q.text && q.text.length > 0);
-                    if (queries.length > 0) break;
+                    // Skip turns that are neither a text message nor an attachment
+                    if (!userMsgEl && !hasAttachment) continue;
+
+                    let text = userMsgEl ? userMsgEl.textContent.trim() : "";
+                    if (!text) text = "[Attachment]";
+
+                    // The scroll target: prefer the text element, fall back to attachment container
+                    const element = userMsgEl || turn.querySelector('.flex-wrap.justify-end') || turn;
+
+                    // Navigate up: .mb-1.mt-6.group -> contents -> top-level turn div
+                    // nextElementSibling of the top-level turn div is the AI response div
+                    let answer = "";
+                    let answerElement = null;
+                    try {
+                        const topLevelTurn = turn.parentElement?.parentElement;
+                        const aiTurn = topLevelTurn?.nextElementSibling;
+                        if (aiTurn) {
+                            answerElement = aiTurn.querySelector(aiSelector);
+                            if (answerElement) answer = answerElement.textContent.trim();
+                        }
+                    } catch (e) { /* silently ignore */ }
+
+                    // Fallback: use findAnswerElement
+                    if (!answerElement) {
+                        const allAi = Array.from(document.querySelectorAll(aiSelector));
+                        const allUserEls = turnWrappers.map(t => t.querySelector('[data-testid="user-message"]') || t.querySelector('.flex-wrap.justify-end') || t).filter(Boolean);
+                        answerElement = TOC_PERF.findAnswerElement(element, allAi, allUserEls);
+                        if (answerElement) answer = answerElement.textContent.trim();
+                    }
+
+                    queries.push({ text, element, answer, answerElement });
+                }
+
+                if (queries.length > 0) {
+                    const seen = new Set();
+                    return queries.filter((q) => {
+                        const key = q.text.substring(0, 100);
+                        if (key === "[Attachment]") return true;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
                 }
             }
 
-            const seen = new Set();
-            return queries.filter((q) => {
-                const key = q.text.substring(0, 100);
-                if (seen.has(key)) return false;
-                seen.add(key);
-                return true;
-            });
+            // Fallback for older/different Claude layouts: try selectors in order
+            const fallbackSelectors = [
+                '[data-testid="user-message"]',
+                '.human-message',
+                '[class*="font-user-message"]',
+                '.flex-wrap.justify-end',
+            ];
+            const claudeAiSelector = '[data-testid="ai-message"], .font-claude-response, .font-claude-response-body, .font-claude-message';
+            const aiElements = Array.from(document.querySelectorAll(claudeAiSelector));
+
+            for (const selector of fallbackSelectors) {
+                const elements = document.querySelectorAll(selector);
+                if (elements.length > 0) {
+                    const elementsArr = Array.from(elements);
+                    const fallbackQueries = elementsArr.map((el) => {
+                        let text = el.textContent.trim();
+                        if (!text) text = "[Attachment]";
+                        let answer = "";
+                        let answerElement = TOC_PERF.findAnswerElement(el, aiElements, elementsArr);
+                        if (answerElement) answer = answerElement.textContent.trim();
+                        return { text, element: el, answer, answerElement };
+                    }).filter((q) => q.text && q.text.length > 0);
+
+                    if (fallbackQueries.length > 0) {
+                        const seen = new Set();
+                        return fallbackQueries.filter((q) => {
+                            const key = q.text.substring(0, 100);
+                            if (key === "[Attachment]") return true;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                        });
+                    }
+                }
+            }
+
+            return [];
         },
 
         setupMonitor: function (onUpdate) {
@@ -549,7 +585,8 @@ const SITES = {
                     const elementsArr = Array.from(elements);
                     queries = elementsArr
                         .map((el) => {
-                            const text = el.textContent.trim();
+                            let text = el.textContent.trim();
+                            if (!text) text = "[Attachment]";
                             // Extract AI answer: find the next non-user message sibling
                             let answer = "";
                             let answerElement = null;
@@ -587,6 +624,7 @@ const SITES = {
             const seen = new Set();
             return queries.filter((q) => {
                 const key = q.text.substring(0, 100);
+                if (key === "[Attachment]") return true;
                 if (seen.has(key)) return false;
                 seen.add(key);
                 return true;

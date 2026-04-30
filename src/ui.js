@@ -298,8 +298,10 @@ window.TOC.DragManager = class DragManager {
         const isExportBtn = e.target.closest("#toc-export-btn");
         const isCollapsed = this.element.classList.contains(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
 
-        // Let export button work normally
+        // Let export/refresh buttons work normally
         if (isExportBtn) return;
+        const isRefreshBtn = e.target.closest("#toc-refresh-btn");
+        if (isRefreshBtn) return;
 
         if (isToggleBtn) {
             if (!isCollapsed) {
@@ -586,8 +588,13 @@ window.TOC.UI = class UI {
             return;
         }
 
-        // Remove existing TOC and do a full rebuild each time
+        // #9: Preserve active search term across rebuilds
         const existingTOC = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+        const activeSearch = existingTOC
+            ? (existingTOC.querySelector(`#${window.TOC.CONSTANTS.IDS.SEARCH_INPUT}`)?.value || "")
+            : "";
+
+        // Remove existing TOC and do a full rebuild each time
         if (existingTOC) existingTOC.remove();
 
         const tocContainer = this.buildTOCStructure(questions);
@@ -598,6 +605,17 @@ window.TOC.UI = class UI {
         });
 
         this.setupTOCFunctionality(tocContainer);
+
+        // #9: Restore search term after setup so the new list items get filtered
+        if (activeSearch && this.searchManager) {
+            const searchInput = tocContainer.querySelector(`#${window.TOC.CONSTANTS.IDS.SEARCH_INPUT}`);
+            if (searchInput) {
+                searchInput.value = activeSearch;
+                this.searchManager.updateSearchResults();
+                this.searchManager.updateClearButtonVisibility();
+            }
+        }
+
         this.applyInitialPosition(tocContainer);
 
         document.body.appendChild(tocContainer);
@@ -638,11 +656,21 @@ window.TOC.UI = class UI {
             this.showExportMenu(tocContainer);
         });
 
+        // Refresh button
+        const refreshBtn = document.createElement("button");
+        refreshBtn.id = "toc-refresh-btn";
+        refreshBtn.title = "Refresh TOC";
+        refreshBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.createTOC(true);
+        });
+
         const toggleBtn = document.createElement("button");
         toggleBtn.id = CONSTANTS.IDS.TOC_TOGGLE_BTN;
         toggleBtn.title = "Toggle Table of Contents";
 
         headerButtons.appendChild(exportBtn);
+        headerButtons.appendChild(refreshBtn);
         headerButtons.appendChild(toggleBtn);
 
         headerContent.appendChild(dragHandle);
@@ -900,6 +928,9 @@ window.TOC.UI = class UI {
 
             const listItem = document.createElement("li");
             listItem.setAttribute("data-toc-num", index + 1);
+            if (questionText.startsWith("[Attachment")) {
+                listItem.classList.add("toc-attachment-item");
+            }
             if (answerText) {
                 listItem.setAttribute("data-answer", answerText);
             }
