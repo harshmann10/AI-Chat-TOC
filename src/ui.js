@@ -21,10 +21,15 @@ window.TOC.CONSTANTS = {
         TOC_HEADER_CONTENT: "toc-header-content",
         TOC_DRAG_HANDLE: "toc-drag-handle",
         TOC_SEARCH_CONTAINER: "toc-search-container",
+        TOC_RESIZE_HANDLE: "toc-resize-handle",
         COLLAPSED: "collapsed",
     },
     CONSTRAINTS: {
         PADDING: 10,
+        MIN_WIDTH: 220,
+        MAX_WIDTH: 900,
+        MIN_HEIGHT: 180,
+        MAX_HEIGHT_VH: 0.95,
         MAX_QUERY_LENGTH: 70,
         TRUNCATE_SUFFIX: "...",
     },
@@ -38,6 +43,7 @@ window.TOC.PositionManager = class PositionManager {
     constructor(storageKey) {
         this.storageKey = storageKey;
         this.collapsedKey = storageKey + "-collapsed";
+        this.sizeKey = storageKey + "-size";
     }
 
     savePosition(x, y) {
@@ -46,7 +52,13 @@ window.TOC.PositionManager = class PositionManager {
 
     getSavedPosition() {
         const saved = localStorage.getItem(this.storageKey);
-        return saved ? JSON.parse(saved) : null;
+        if (!saved) return null;
+        try {
+            return JSON.parse(saved);
+        } catch (e) {
+            localStorage.removeItem(this.storageKey);
+            return null;
+        }
     }
 
     saveCollapsedState(isCollapsed) {
@@ -55,7 +67,46 @@ window.TOC.PositionManager = class PositionManager {
 
     getCollapsedState() {
         const saved = localStorage.getItem(this.collapsedKey);
-        return saved ? JSON.parse(saved) : false;
+        if (!saved) return false;
+        try {
+            return JSON.parse(saved);
+        } catch (e) {
+            localStorage.removeItem(this.collapsedKey);
+            return false;
+        }
+    }
+
+    saveSize(width, height) {
+        localStorage.setItem(this.sizeKey, JSON.stringify({ width, height }));
+    }
+
+    getSavedSize() {
+        const saved = localStorage.getItem(this.sizeKey);
+        if (!saved) return null;
+        try {
+            return JSON.parse(saved);
+        } catch (e) {
+            this.clearSavedSize();
+            return null;
+        }
+    }
+
+    clearSavedSize() {
+        localStorage.removeItem(this.sizeKey);
+    }
+
+    applySize(element, width, height) {
+        element.style.setProperty("width", `${width}px`, "important");
+        element.style.setProperty("height", `${height}px`, "important");
+        element.style.setProperty("max-height", "none", "important");
+    }
+
+    clearSize(element) {
+        element.style.removeProperty("width");
+        element.style.removeProperty("height");
+        element.style.removeProperty("max-height");
+        const list = element.querySelector("ul");
+        if (list) list.style.removeProperty("max-height");
     }
 
     applyPosition(element, x, y) {
@@ -193,8 +244,6 @@ window.TOC.DragManager = class DragManager {
 
         this.boundDrag = this.drag.bind(this);
         this.boundStopDrag = this.stopDrag.bind(this);
-        this.boundTouchDrag = this.touchDrag.bind(this);
-        this.boundTouchEnd = this.touchEnd.bind(this);
 
         this.init();
     }
@@ -205,27 +254,26 @@ window.TOC.DragManager = class DragManager {
 
         header.style.cursor = "move";
         header.style.userSelect = "none";
-        header.style.touchAction = "none"; // Prevent default touch scrolling
+        header.style.touchAction = "none";
 
-        // Mouse events
-        header.addEventListener("mousedown", this.startDrag.bind(this));
-
-        // Touch events
-        header.addEventListener("touchstart", this.touchStart.bind(this), { passive: false });
+        header.addEventListener("pointerdown", this.startDrag.bind(this));
     }
 
-    // =========== MOUSE EVENTS ===========
     startDrag(e) {
+        if (!e.isPrimary) return;
+
         const isToggleBtn = e.target.closest(`#${window.TOC.CONSTANTS.IDS.TOC_TOGGLE_BTN}`);
+        const isExportBtn = e.target.closest("#toc-export-btn");
+        const isRefreshBtn = e.target.closest("#toc-refresh-btn");
         const isCollapsed = this.element.classList.contains(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
 
-        if (isToggleBtn) {
-            if (!isCollapsed) {
-                e.preventDefault();
-                e.stopPropagation();
-                this.toggleCollapse(false);
-                return;
-            }
+        if (isExportBtn || isRefreshBtn) return;
+
+        if (isToggleBtn && !isCollapsed) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggleCollapse(false);
+            return;
         }
 
         e.preventDefault();
@@ -244,16 +292,15 @@ window.TOC.DragManager = class DragManager {
         this.positionManager.applyPosition(this.element, this.startElementX, this.startElementY);
         this.applyDragStyles();
 
-        document.addEventListener("mousemove", this.boundDrag);
-        document.addEventListener("mouseup", this.boundStopDrag);
+        document.addEventListener("pointermove", this.boundDrag);
+        document.addEventListener("pointerup", this.boundStopDrag);
+        document.addEventListener("pointercancel", this.boundStopDrag);
         document.body.style.userSelect = "none";
     }
 
     drag(e) {
-        if (!this.isDragging) return;
-
+        if (!this.isDragging || !e.isPrimary) return;
         e.preventDefault();
-        e.stopPropagation();
 
         const deltaX = e.clientX - this.startX;
         const deltaY = e.clientY - this.startY;
@@ -261,22 +308,17 @@ window.TOC.DragManager = class DragManager {
         if (!this.hasMoved && Math.abs(deltaX) < 3 && Math.abs(deltaY) < 3) return;
         this.hasMoved = true;
 
-        let newX = this.startElementX + deltaX;
-        let newY = this.startElementY + deltaY;
-
         const constrained = this.positionManager.constrainToViewport(
-            newX,
-            newY,
+            this.startElementX + deltaX,
+            this.startElementY + deltaY,
             this.element.offsetWidth,
             this.element.offsetHeight
         );
-
         this.positionManager.applyPosition(this.element, constrained.x, constrained.y);
     }
 
     stopDrag(e) {
         if (!this.isDragging) return;
-
         this.isDragging = false;
 
         const rect = this.element.getBoundingClientRect();
@@ -287,95 +329,10 @@ window.TOC.DragManager = class DragManager {
         }
 
         this.removeDragStyles();
-        document.removeEventListener("mousemove", this.boundDrag);
-        document.removeEventListener("mouseup", this.boundStopDrag);
+        document.removeEventListener("pointermove", this.boundDrag);
+        document.removeEventListener("pointerup", this.boundStopDrag);
+        document.removeEventListener("pointercancel", this.boundStopDrag);
         document.body.style.userSelect = "";
-    }
-
-    // =========== TOUCH EVENTS ===========
-    touchStart(e) {
-        const isToggleBtn = e.target.closest(`#${window.TOC.CONSTANTS.IDS.TOC_TOGGLE_BTN}`);
-        const isExportBtn = e.target.closest("#toc-export-btn");
-        const isCollapsed = this.element.classList.contains(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
-
-        // Let export/refresh buttons work normally
-        if (isExportBtn) return;
-        const isRefreshBtn = e.target.closest("#toc-refresh-btn");
-        if (isRefreshBtn) return;
-
-        if (isToggleBtn) {
-            if (!isCollapsed) {
-                e.preventDefault();
-                this.toggleCollapse(false);
-                return;
-            }
-        }
-
-        if (e.touches.length !== 1) return;
-
-        e.preventDefault();
-
-        this.isDragging = true;
-        this.hasMoved = false;
-        this.isClickOnToggle = !!isToggleBtn;
-
-        const touch = e.touches[0];
-        this.startX = touch.clientX;
-        this.startY = touch.clientY;
-
-        const rect = this.element.getBoundingClientRect();
-        this.startElementX = rect.left;
-        this.startElementY = rect.top;
-
-        this.positionManager.applyPosition(this.element, this.startElementX, this.startElementY);
-        this.applyDragStyles();
-
-        document.addEventListener("touchmove", this.boundTouchDrag, { passive: false });
-        document.addEventListener("touchend", this.boundTouchEnd);
-        document.addEventListener("touchcancel", this.boundTouchEnd);
-    }
-
-    touchDrag(e) {
-        if (!this.isDragging || e.touches.length !== 1) return;
-
-        e.preventDefault();
-
-        const touch = e.touches[0];
-        const deltaX = touch.clientX - this.startX;
-        const deltaY = touch.clientY - this.startY;
-
-        if (!this.hasMoved && Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) return;
-        this.hasMoved = true;
-
-        let newX = this.startElementX + deltaX;
-        let newY = this.startElementY + deltaY;
-
-        const constrained = this.positionManager.constrainToViewport(
-            newX,
-            newY,
-            this.element.offsetWidth,
-            this.element.offsetHeight
-        );
-
-        this.positionManager.applyPosition(this.element, constrained.x, constrained.y);
-    }
-
-    touchEnd(e) {
-        if (!this.isDragging) return;
-
-        this.isDragging = false;
-
-        const rect = this.element.getBoundingClientRect();
-        this.positionManager.savePosition(rect.left, rect.top);
-
-        if (!this.hasMoved && this.isClickOnToggle) {
-            this.toggleCollapse(true);
-        }
-
-        this.removeDragStyles();
-        document.removeEventListener("touchmove", this.boundTouchDrag);
-        document.removeEventListener("touchend", this.boundTouchEnd);
-        document.removeEventListener("touchcancel", this.boundTouchEnd);
     }
 
     toggleCollapse(isExpanding) {
@@ -386,28 +343,40 @@ window.TOC.DragManager = class DragManager {
 
         if (!isExpanding) {
             const expandedWidth = rect.width;
+            const expandedHeight = rect.height;
             this.element.dataset.expandedWidth = expandedWidth;
+            this.element.dataset.expandedHeight = expandedHeight;
 
             const newX = currentX + expandedWidth - collapsedSize;
 
             this.element.classList.add(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
+            this.element.style.removeProperty("width");
+            this.element.style.removeProperty("height");
+            this.element.style.removeProperty("max-height");
             this.positionManager.applyPosition(this.element, newX, currentY);
             this.positionManager.savePosition(newX, currentY);
             this.positionManager.saveCollapsedState(true);
         } else {
-            const expandedWidth = parseFloat(this.element.dataset.expandedWidth) || 300;
+            const savedSize = this.positionManager.getSavedSize();
+            const expandedWidth = savedSize
+                ? savedSize.width
+                : (parseFloat(this.element.dataset.expandedWidth) || 300);
+            const expandedHeight = savedSize
+                ? savedSize.height
+                : parseFloat(this.element.dataset.expandedHeight);
 
             const newX = currentX - (expandedWidth - collapsedSize);
-
             this.element.classList.remove(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
 
-            const constrained = this.positionManager.constrainToViewport(
-                newX,
-                currentY,
-                expandedWidth,
-                this.element.offsetHeight
-            );
+            if (savedSize) {
+                this.positionManager.applySize(this.element, expandedWidth, expandedHeight);
+                const list = this.element.querySelector("ul");
+                if (list) list.style.maxHeight = "none";
+            }
 
+            const constrained = this.positionManager.constrainToViewport(
+                newX, currentY, expandedWidth, this.element.offsetHeight
+            );
             this.positionManager.applyPosition(this.element, constrained.x, constrained.y);
             this.positionManager.savePosition(constrained.x, constrained.y);
             this.positionManager.saveCollapsedState(false);
@@ -424,6 +393,182 @@ window.TOC.DragManager = class DragManager {
         this.element.style.opacity = "";
         this.element.style.transition = "";
         this.element.style.zIndex = "10000";
+    }
+};
+
+// =============================================================================
+// ResizeManager - Handles drag-to-resize functionality (Pointer Events)
+// =============================================================================
+
+window.TOC.ResizeManager = class ResizeManager {
+    constructor(element, positionManager) {
+        this.element = element;
+        this.positionManager = positionManager;
+        this.isResizing = false;
+        this.isLeftResize = false;
+        this.ticking = false;
+        this.lastTapTime = 0;
+        this.startX = 0;
+        this.startY = 0;
+        this.startWidth = 0;
+        this.startHeight = 0;
+        this.startLeft = 0;
+        this.pendingX = 0;
+        this.pendingY = 0;
+
+        this.boundResize = this.resize.bind(this);
+        this.boundStopResize = this.stopResize.bind(this);
+
+        this.init();
+    }
+
+    init() {
+        const handles = this.element.querySelectorAll(`.${window.TOC.CONSTANTS.CLASSES.TOC_RESIZE_HANDLE}`);
+        handles.forEach(handle => {
+            handle.style.touchAction = "none";
+            handle.addEventListener("pointerdown", this.startResize.bind(this));
+        });
+    }
+
+    startResize(e) {
+        if (!e.isPrimary) return;
+
+        // Double-tap/click reset check
+        const now = Date.now();
+        if (now - this.lastTapTime < 300) {
+            this.resetToDefault();
+            this.lastTapTime = 0;
+            return;
+        }
+        this.lastTapTime = now;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        this.isLeftResize = e.target.classList.contains("bottom-left");
+        this.isResizing = true;
+        this.startX = e.clientX;
+        this.startY = e.clientY;
+        this.startWidth = this.element.offsetWidth;
+        this.startHeight = this.element.offsetHeight;
+        this.startLeft = parseFloat(this.element.style.left) || this.element.getBoundingClientRect().left;
+
+        this.applyResizeStyles(e.target);
+
+        document.addEventListener("pointermove", this.boundResize);
+        document.addEventListener("pointerup", this.boundStopResize);
+        document.addEventListener("pointercancel", this.boundStopResize);
+        document.body.style.userSelect = "none";
+    }
+
+    resize(e) {
+        if (!this.isResizing || !e.isPrimary) return;
+        e.preventDefault();
+
+        this.pendingX = e.clientX;
+        this.pendingY = e.clientY;
+
+        if (!this.ticking) {
+            requestAnimationFrame(() => {
+                this.applyResize();
+                this.ticking = false;
+            });
+            this.ticking = true;
+        }
+    }
+
+    applyResize() {
+        const deltaX = this.pendingX - this.startX;
+        const deltaY = this.pendingY - this.startY;
+        const max = this.getEffectiveMax();
+        const C = window.TOC.CONSTANTS.CONSTRAINTS;
+
+        let newWidth, newHeight, newLeft;
+
+        if (this.isLeftResize) {
+            // Left resize: dragging left (negative deltaX) increases width
+            newWidth = Math.max(C.MIN_WIDTH, Math.min(this.startWidth - deltaX, max.width));
+            const widthDiff = newWidth - this.startWidth;
+            newLeft = this.startLeft - widthDiff;
+            newHeight = Math.max(C.MIN_HEIGHT, Math.min(this.startHeight + deltaY, max.height));
+        } else {
+            // Right resize: dragging right (positive deltaX) increases width
+            newWidth = Math.max(C.MIN_WIDTH, Math.min(this.startWidth + deltaX, max.width));
+            newHeight = Math.max(C.MIN_HEIGHT, Math.min(this.startHeight + deltaY, max.height));
+        }
+
+        this.positionManager.applySize(this.element, newWidth, newHeight);
+
+        if (this.isLeftResize && newLeft !== undefined) {
+            this.element.style.left = `${newLeft}px`;
+        }
+
+        const list = this.element.querySelector("ul");
+        if (list) list.style.maxHeight = "none";
+    }
+
+    getEffectiveMax() {
+        const rect = this.element.getBoundingClientRect();
+        const padding = window.TOC.CONSTANTS.CONSTRAINTS.PADDING;
+        const C = window.TOC.CONSTANTS.CONSTRAINTS;
+
+        // When resizing from the left, space to the left is bounded by rect.right - padding
+        const maxWidth = this.isLeftResize 
+            ? Math.min(C.MAX_WIDTH, (rect.right - padding)) 
+            : Math.min(C.MAX_WIDTH, (window.innerWidth - rect.left - padding));
+
+        return {
+            width: maxWidth,
+            height: Math.min(
+                window.innerHeight * C.MAX_HEIGHT_VH,
+                window.innerHeight - rect.top - padding
+            )
+        };
+    }
+
+    stopResize(e) {
+        if (!this.isResizing) return;
+        this.isResizing = false;
+
+        const width = this.element.offsetWidth;
+        const height = this.element.offsetHeight;
+        this.positionManager.saveSize(width, height);
+
+        if (this.isLeftResize) {
+            const rect = this.element.getBoundingClientRect();
+            this.positionManager.savePosition(rect.left, rect.top);
+        }
+
+        this.removeResizeStyles();
+        document.removeEventListener("pointermove", this.boundResize);
+        document.removeEventListener("pointerup", this.boundStopResize);
+        document.removeEventListener("pointercancel", this.boundStopResize);
+        document.body.style.userSelect = "";
+    }
+
+    resetToDefault() {
+        this.positionManager.clearSavedSize();
+        this.positionManager.clearSize(this.element);
+
+        const rect = this.element.getBoundingClientRect();
+        const constrained = this.positionManager.constrainToViewport(
+            rect.left, rect.top, this.element.offsetWidth, this.element.offsetHeight
+        );
+        this.positionManager.applyPosition(this.element, constrained.x, constrained.y);
+        this.positionManager.savePosition(constrained.x, constrained.y);
+    }
+
+    applyResizeStyles(activeHandle) {
+        this.element.style.transition = "none";
+        this.element.style.zIndex = "10001";
+        if (activeHandle) activeHandle.classList.add("resizing");
+    }
+
+    removeResizeStyles() {
+        this.element.style.transition = "";
+        this.element.style.zIndex = "10000";
+        const handles = this.element.querySelectorAll(`.${window.TOC.CONSTANTS.CLASSES.TOC_RESIZE_HANDLE}`);
+        handles.forEach(h => h.classList.remove("resizing"));
     }
 };
 
@@ -500,7 +645,7 @@ window.TOC.UI = class UI {
 
     init() {
         this.setupEventListeners();
-        this.config.setupMonitor(() => this.debouncedCreateTOC());
+        this.config.setupMonitor(() => this.createTOC());
         this.delayedCreateTOC();
     }
 
@@ -518,6 +663,8 @@ window.TOC.UI = class UI {
             api.runtime.onMessage.addListener((request) => {
                 if (request.action === "toggle-toc") {
                     this.toggleTOC();
+                } else if (request.action === "reset-toc-layout") {
+                    this.resetLayout();
                 }
             });
         }
@@ -529,6 +676,44 @@ window.TOC.UI = class UI {
                 this.createTOC(true);
             });
         });
+    }
+
+    resetLayout() {
+        const tocContainer = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+        if (!tocContainer) return;
+
+        // 1. Clear saved values in PositionManager
+        localStorage.removeItem(this.positionManager.storageKey);
+        localStorage.removeItem(this.positionManager.sizeKey);
+        localStorage.removeItem(this.positionManager.collapsedKey);
+
+        // 2. Clear size and position in CSS / inline styles
+        this.positionManager.clearSize(tocContainer);
+        tocContainer.classList.remove(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
+
+        // 3. Re-calculate defaults
+        const width = 300;
+        const height = 400;
+        const x = window.innerWidth - width - 40;
+        const y = 60;
+
+        // 4. Temporarily disable transitions, apply position, and then restore
+        tocContainer.style.setProperty("transition", "none", "important");
+        this.positionManager.applyPosition(tocContainer, x, y);
+
+        const list = tocContainer.querySelector("ul");
+        if (list) list.style.removeProperty("max-height");
+
+        // Force reflow
+        tocContainer.offsetHeight;
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                tocContainer.style.removeProperty("transition");
+            });
+        });
+
+        this.showToast("TOC size & position reset to default");
     }
 
     toggleTOC() {
@@ -574,9 +759,9 @@ window.TOC.UI = class UI {
     }
 
     createTOC(force = false) {
-        // Prevent creating more than once per second
+        // Throttle: prevent rapid successive creates
         const now = Date.now();
-        if (!force && now - this.lastCreateTime < 1000) {
+        if (!force && now - this.lastCreateTime < 500) {
             console.log("[TOC] Skipping - too soon since last create");
             return;
         }
@@ -746,6 +931,18 @@ window.TOC.UI = class UI {
         tocContainer.appendChild(tocList);
         tocContainer.appendChild(tocFooter);
 
+        // Bottom Right Resize Handle
+        const resizeRight = document.createElement("div");
+        resizeRight.className = `${CONSTANTS.CLASSES.TOC_RESIZE_HANDLE} bottom-right`;
+        resizeRight.title = "Drag to resize \u2022 Double-click to reset";
+        tocContainer.appendChild(resizeRight);
+
+        // Bottom Left Resize Handle
+        const resizeLeft = document.createElement("div");
+        resizeLeft.className = `${CONSTANTS.CLASSES.TOC_RESIZE_HANDLE} bottom-left`;
+        resizeLeft.title = "Drag to resize \u2022 Double-click to reset";
+        tocContainer.appendChild(resizeLeft);
+
         return tocContainer;
     }
 
@@ -909,12 +1106,6 @@ window.TOC.UI = class UI {
             const answerText = (typeof item !== "string" && item.answer) ? item.answer : "";
             const answerElement = (typeof item !== "string" && item.answerElement) ? item.answerElement : null;
 
-            const shortText =
-                questionText.length > CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH
-                    ? questionText.substring(0, CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH - 3) +
-                    CONSTANTS.CONSTRAINTS.TRUNCATE_SUFFIX
-                    : questionText;
-
             const questionId = `toc-question-${index}`;
             const answerId = `toc-answer-${index}`;
 
@@ -938,8 +1129,12 @@ window.TOC.UI = class UI {
             const link = document.createElement("a");
             link.href = `#${questionId}`;
             link.setAttribute("data-num", index + 1);
-            link.textContent = shortText;
             link.title = questionText;
+
+            const qSpan = document.createElement("span");
+            qSpan.className = "toc-question-text";
+            qSpan.textContent = questionText;
+            link.appendChild(qSpan);
 
             const questionRow = document.createElement("div");
             questionRow.className = "toc-question-row";
@@ -966,10 +1161,7 @@ window.TOC.UI = class UI {
 
                 const answerSpan = document.createElement("span");
                 answerSpan.className = "toc-answer-text";
-                const shortAnswer = answerText.length > CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH
-                    ? answerText.substring(0, CONSTANTS.CONSTRAINTS.MAX_QUERY_LENGTH - 3) + CONSTANTS.CONSTRAINTS.TRUNCATE_SUFFIX
-                    : answerText;
-                answerSpan.textContent = shortAnswer;
+                answerSpan.textContent = answerText;
                 answerSpan.title = answerText.substring(0, 500);
 
                 answerContent.appendChild(badge);
@@ -996,6 +1188,7 @@ window.TOC.UI = class UI {
     setupTOCFunctionality(tocContainer) {
         this.setupSearchFunctionality(tocContainer);
         this.setupDragFunctionality(tocContainer);
+        this.setupResizeFunctionality(tocContainer);
         this.restoreCollapsedState(tocContainer);
     }
 
@@ -1020,33 +1213,50 @@ window.TOC.UI = class UI {
         this.dragManager = new window.TOC.DragManager(tocContainer, this.positionManager);
     }
 
+    setupResizeFunctionality(tocContainer) {
+        this.resizeManager = new window.TOC.ResizeManager(tocContainer, this.positionManager);
+    }
+
     applyInitialPosition(tocContainer) {
-        // Need to wait a frame for the element to have dimensions
+        const savedSize = this.positionManager.getSavedSize();
+        const savedPosition = this.positionManager.getSavedPosition();
+        const isCollapsed = this.positionManager.getCollapsedState();
+
+        const width = savedSize ? savedSize.width : 300;
+        const height = savedSize ? savedSize.height : 400;
+
+        // Apply transition none to prevent any initial layout sliding animations
+        tocContainer.style.setProperty("transition", "none", "important");
+
+        if (savedSize && !isCollapsed) {
+            this.positionManager.applySize(tocContainer, width, height);
+            const list = tocContainer.querySelector("ul");
+            if (list) list.style.maxHeight = "none";
+        }
+
+        let x, y;
+        if (savedPosition) {
+            const constrained = this.positionManager.constrainToViewport(
+                savedPosition.x,
+                savedPosition.y,
+                width,
+                height
+            );
+            x = constrained.x;
+            y = constrained.y;
+        } else {
+            x = window.innerWidth - width - 40;
+            y = 60;
+        }
+
+        this.positionManager.applyPosition(tocContainer, x, y);
+        this.positionManager.savePosition(x, y);
+
+        // Keep transition none for one render tick, then restore natural transitions
         requestAnimationFrame(() => {
-            const savedPosition = this.positionManager.getSavedPosition();
-            const width = tocContainer.offsetWidth || 300;
-            const height = tocContainer.offsetHeight || 400;
-
-            let x, y;
-
-            if (savedPosition) {
-                // Use saved position but constrain to viewport
-                const constrained = this.positionManager.constrainToViewport(
-                    savedPosition.x,
-                    savedPosition.y,
-                    width,
-                    height
-                );
-                x = constrained.x;
-                y = constrained.y;
-            } else {
-                // Default position: top-right corner with padding
-                x = window.innerWidth - width - 40;
-                y = 60;
-            }
-
-            this.positionManager.applyPosition(tocContainer, x, y);
-            this.positionManager.savePosition(x, y);
+            requestAnimationFrame(() => {
+                tocContainer.style.removeProperty("transition");
+            });
         });
     }
 
@@ -1079,6 +1289,7 @@ window.TOC.UI = class UI {
         const promptInput = this.config.selectors.promptInput;
         if (
             event.key === "Enter" &&
+            !event.shiftKey &&
             promptInput &&
             document.activeElement.matches(promptInput)
         ) {

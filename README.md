@@ -5,7 +5,7 @@
 A browser extension that adds a **Table of Contents** sidebar to AI chat interfaces. Never lose track of your conversation again!
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.8.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platforms-5-orange" alt="Platforms">
 </p>
@@ -33,10 +33,13 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 | 🤖 **Show AI Answers** | Toggle inline AI response previews         |
 | 🌗 **Theme Mode**      | Light / Dark / System modes                 |
 | 🖱️ **Drag & Drop**     | Reposition anywhere on screen               |
+| 📐 **Bidirectional Resize** | Smoothly resize width and height from bottom-left corner with dynamic text reflow |
+| 🔄 **Instant Updates**  | TOC updates instantly with near-zero lag as you send or receive messages |
+| 🔄 **Layout Reset**    | Easily restore default layout & position from Settings with one click |
 | 📱 **Mobile Friendly** | Touch support & responsive design           |
 | 💾 **Position Memory** | Remembers position per-site                 |
 | 📤 **Export**          | Copy/download as text or markdown           |
-| ⚡ **Optimized**       | Minimal CPU usage                           |
+| ⚡ **Highly Optimized** | Intelligent throttling (500ms) & idle safety checks |
 
 ---
 
@@ -135,7 +138,10 @@ You can change the `Ctrl+Shift+F` shortcut natively in your browser:
 - [x] ~~Grok support~~
 - [x] ~~Settings page (Theme Customization)~~
 - [x] ~~Show Answers in TOC~~
-- [ ] More AI platforms---
+- [x] ~~Bidirectional Layout Resizing~~
+- [ ] More AI platforms
+
+---
 
 ## 🛠️ Development
 

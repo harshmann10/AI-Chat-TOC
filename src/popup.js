@@ -166,6 +166,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         refreshModeUI();
         refreshShowAnswersUI();
         renderPlatforms();
+
+        // Broadcast layout reset command to all content tabs
+        const api = (typeof chrome !== 'undefined') ? chrome : (typeof browser !== 'undefined') ? browser : null;
+        if (api && api.tabs) {
+            api.tabs.query({}, (tabs) => {
+                tabs.forEach(tab => {
+                    api.tabs.sendMessage(tab.id, { action: "reset-toc-layout" }).catch(() => {});
+                });
+            });
+        }
     });
 
     // ── Init ─────────────────────────────────────────────────────

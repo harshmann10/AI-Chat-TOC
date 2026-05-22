@@ -130,13 +130,59 @@ const TOC_PERF = {
 
         window.addEventListener("toc-locationchange", handleUrlChange);
 
-        // Periodic safety-net check
+        // NEW: MutationObserver for instant DOM change detection
+        const containerSelector = siteConfig.selectors.chatContainer || 'main, [role="main"]';
+
+        let observerDebounceTimer = null;
+        const observerCallback = () => {
+            clearTimeout(observerDebounceTimer);
+            observerDebounceTimer = setTimeout(() => {
+                if (!TOC_PERF.isTabVisible()) return;
+
+                const currentQueries = document.querySelectorAll(siteConfig.selectors.userMessage).length;
+                const currentUrl = location.href;
+
+                // URL check catches same-count chat switches (e.g., 5 messages -> 5 messages)
+                if (currentQueries !== siteConfig.lastQueryCount || currentUrl !== siteConfig.lastUrl) {
+                    siteConfig.lastQueryCount = currentQueries;
+                    siteConfig.lastUrl = currentUrl;
+                    if (currentQueries >= minQ) {
+                        onUpdate(); // Call onUpdate directly to avoid compounding debounces
+                    } else {
+                        const toc = document.getElementById("toc-extension");
+                        if (toc) toc.remove();
+                    }
+                }
+            }, 400);
+        };
+
+        // Retry-based initialization: prefer the chat container, fall back to body
+        const initObserver = () => {
+            const chatRoot = document.querySelector(containerSelector) || document.body;
+
+            const domObserver = new MutationObserver(observerCallback);
+            domObserver.observe(chatRoot, { childList: true, subtree: true });
+
+            // If we fell back to body, try re-targeting once the SPA has mounted
+            if (chatRoot === document.body) {
+                setTimeout(() => {
+                    const actualRoot = document.querySelector(containerSelector);
+                    if (actualRoot) {
+                        domObserver.disconnect();
+                        domObserver.observe(actualRoot, { childList: true, subtree: true });
+                    }
+                }, 2000);
+            }
+        };
+        initObserver();
+
+        // Periodic safety-net check - optimized with cheap count check
         setInterval(() => {
             if (!TOC_PERF.isTabVisible()) return;
             if (o.extraGuard && !o.extraGuard()) return;
 
             const tocExists = document.getElementById("toc-extension");
-            const currentQueries = siteConfig.getQueries().length;
+            const currentQueries = document.querySelectorAll(siteConfig.selectors.userMessage).length;
 
             if (!tocExists && currentQueries >= minQ) {
                 siteConfig.lastQueryCount = currentQueries;
@@ -174,12 +220,13 @@ const SITES = {
             userMessage: 'div[data-message-author-role="user"]',
             sendButton: '[data-testid="send-button"]',
             promptInput: "#prompt-textarea",
+            chatContainer: "main",
         },
         delays: {
             pageLoad: 2000,
             promptSubmission: 500,
-            chatChange: 1500,
-            stateCheck: 5000,
+            chatChange: 500,
+            stateCheck: 15000,
         },
 
         lastQueryCount: 0,
@@ -241,8 +288,8 @@ const SITES = {
         delays: {
             pageLoad: 1500,
             promptSubmission: 500,
-            chatChange: 1500,
-            stateCheck: 5000,
+            chatChange: 500,
+            stateCheck: 15000,
         },
 
         lastQueryCount: 0,
@@ -355,12 +402,13 @@ const SITES = {
             userMessage: "h1.group\\/query, div.group\\/query, .flex.flex-col.gap-1.pb-2",
             sendButton: '[data-testid="submit-button"]',
             promptInput: "#ask-input",
+            chatContainer: "main",
         },
         delays: {
             pageLoad: 2000,
             promptSubmission: 200,
-            chatChange: 1500,
-            stateCheck: 5000,
+            chatChange: 500,
+            stateCheck: 15000,
         },
 
         lastQueryCount: 0,
@@ -435,12 +483,13 @@ const SITES = {
             userMessage: '[data-testid="user-message"], .human-message, [class*="human"], [class*="font-user-message"], .flex-wrap.justify-end',
             sendButton: '[data-testid="send-button"], button[type="submit"]',
             promptInput: '[contenteditable="true"], textarea',
+            chatContainer: '[data-testid="conversation-turn-list"], main',
         },
         delays: {
             pageLoad: 2000,
             promptSubmission: 500,
-            chatChange: 1500,
-            stateCheck: 5000,
+            chatChange: 500,
+            stateCheck: 15000,
         },
 
         lastQueryCount: 0,
@@ -562,12 +611,13 @@ const SITES = {
             userMessage: ".message-bubble.bg-surface-l1, .user-message, [data-testid='user-message'], .message-user",
             sendButton: "button[aria-label='Submit'], [data-testid='send-button']",
             promptInput: "div.tiptap.ProseMirror, textarea[aria-label='Ask Grok anything'], textarea, [contenteditable='true']",
+            chatContainer: "main",
         },
         delays: {
             pageLoad: 2500,
             promptSubmission: 500,
-            chatChange: 1500,
-            stateCheck: 5000,
+            chatChange: 500,
+            stateCheck: 15000,
         },
 
         lastQueryCount: 0,
