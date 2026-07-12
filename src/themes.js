@@ -52,7 +52,8 @@ const DEFAULT_THEMES = {
 const DEFAULT_SETTINGS = {
     themeMode: "system", // light, dark, system
     themes: DEFAULT_THEMES,
-    showAnswers: false
+    showAnswers: false,
+    compactMode: false
 };
 
 // Make it available to content script and popup

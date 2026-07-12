@@ -20,6 +20,13 @@
                 "mac": "MacCtrl+Shift+F"
             },
             "description": "Toggle Table of Contents"
+        },
+        "toggle-compact-mode": {
+            "suggested_key": {
+                "default": "Alt+Shift+C",
+                "mac": "Alt+Shift+C"
+            },
+            "description": "Toggle Compact Navigation Mode"
         }
     },
     "action": {

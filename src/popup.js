@@ -113,6 +113,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // ── Compact Mode toggle ──────────────────────────────────────
+    const compactModeToggle = document.getElementById('toggle-compact-mode');
+
+    function refreshCompactModeUI() {
+        if (compactModeToggle) {
+            compactModeToggle.checked = !!settings.compactMode;
+        }
+    }
+
+    if (compactModeToggle) {
+        compactModeToggle.addEventListener('change', () => {
+            settings.compactMode = compactModeToggle.checked;
+            saveKey('compactMode', settings.compactMode);
+        });
+    }
+
     // ── Platform theme cards ─────────────────────────────────────
     const platformList = document.getElementById('platform-list');
     const PLATFORMS = [
@@ -165,6 +181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (storageAPI) storageAPI.set(DEFAULT_SETTINGS);
         refreshModeUI();
         refreshShowAnswersUI();
+        refreshCompactModeUI();
         renderPlatforms();
 
         // Broadcast layout reset command to all content tabs
@@ -181,5 +198,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Init ─────────────────────────────────────────────────────
     refreshModeUI();
     refreshShowAnswersUI();
+    refreshCompactModeUI();
     renderPlatforms();
 });

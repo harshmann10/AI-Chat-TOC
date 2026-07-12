@@ -29,6 +29,7 @@ A browser extension that adds a **Table of Contents** sidebar to AI chat interfa
 | Feature                | Description                                 |
 | ---------------------- | ------------------------------------------- |
 | 📋 **TOC Sidebar**     | Lists all your queries in a navigable list  |
+| 🍱 **Compact Mode**    | Adaptive multi-column grid of pill badges with zero-jitter hover preview cards |
 | 🔍 **Search**          | Filter queries by keyword and AI answer text|
 | 🤖 **Show AI Answers** | Toggle inline AI response previews         |
 | 🌗 **Theme Mode**      | Light / Dark / System modes                 |
@@ -121,12 +122,13 @@ AI Chat TOC/
 | Shortcut       | Action                             |
 | -------------- | ---------------------------------- |
 | `Ctrl+Shift+F` | Toggle TOC visibility (Customizable in browser) |
+| `Alt+Shift+C`  | Toggle Compact Navigation Mode (Customizable in browser) |
 | 📋 Copy button | Hover over item to see copy button |
 
-### How to Customize the Shortcut
+### How to Customize the Shortcuts
 
-You can change the `Ctrl+Shift+F` shortcut natively in your browser:
-*   **Chrome / Edge**: Go to `chrome://extensions/shortcuts` (or `edge://extensions/shortcuts`), find "AI Chat TOC", and type your preferred key combination.
+You can change the `Ctrl+Shift+F` or `Alt+Shift+C` shortcuts natively in your browser:
+*   **Chrome / Edge**: Go to `chrome://extensions/shortcuts` (or `edge://extensions/shortcuts`), find "AI Chat TOC", and type your preferred key combinations.
 *   **Firefox**: Go to `about:addons`, click the **Gear** icon ⚙️ in the top right, select **Manage Extension Shortcuts**, and update "AI Chat TOC".
 
 ---
@@ -139,6 +141,7 @@ You can change the `Ctrl+Shift+F` shortcut natively in your browser:
 - [x] ~~Settings page (Theme Customization)~~
 - [x] ~~Show Answers in TOC~~
 - [x] ~~Bidirectional Layout Resizing~~
+- [x] ~~Compact Navigation Mode (Adaptive Grid & Hover Previews)~~
 - [ ] More AI platforms
 
 ---

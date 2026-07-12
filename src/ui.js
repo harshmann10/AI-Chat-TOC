@@ -224,6 +224,14 @@ window.TOC.ThemeManager = class ThemeManager {
             api.storage.onChanged.addListener(handler);
         }
     }
+
+    saveSetting(key, value) {
+        this.settings[key] = value;
+        const api = (typeof chrome !== 'undefined' && chrome.storage) ? chrome : (typeof browser !== 'undefined' && browser.storage) ? browser : null;
+        if (api && api.storage && api.storage.local) {
+            api.storage.local.set({ [key]: value });
+        }
+    }
 };
 
 // =============================================================================
@@ -606,7 +614,7 @@ window.TOC.SearchManager = class SearchManager {
             const text = item.querySelector("a").textContent.toLowerCase();
             const answer = (item.getAttribute("data-answer") || "").toLowerCase();
             const shouldShow = searchTerm === "" || text.includes(searchTerm) || answer.includes(searchTerm);
-            item.style.display = shouldShow ? "block" : "none";
+            item.style.display = shouldShow ? "" : "none";
         });
     }
 
@@ -665,6 +673,8 @@ window.TOC.UI = class UI {
                     this.toggleTOC();
                 } else if (request.action === "reset-toc-layout") {
                     this.resetLayout();
+                } else if (request.action === "toggle-compact-mode") {
+                    this.toggleCompactModeShortcut();
                 }
             });
         }
@@ -690,6 +700,13 @@ window.TOC.UI = class UI {
         // 2. Clear size and position in CSS / inline styles
         this.positionManager.clearSize(tocContainer);
         tocContainer.classList.remove(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
+        tocContainer.classList.remove("compact-mode");
+        this.themeManager.settings.compactMode = false;
+        this.themeManager.settings.showAnswers = false;
+        const api = (typeof chrome !== 'undefined' && chrome.storage) ? chrome : (typeof browser !== 'undefined' && browser.storage) ? browser : null;
+        if (api && api.storage && api.storage.local) {
+            api.storage.local.set({ compactMode: false, showAnswers: false });
+        }
 
         // 3. Re-calculate defaults
         const width = 300;
@@ -738,6 +755,27 @@ window.TOC.UI = class UI {
         this.showToast(isCollapsed ? "TOC expanded" : "TOC collapsed");
     }
 
+    toggleCompactModeShortcut() {
+        const tocContainer = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+        if (!tocContainer) return;
+
+        const newMode = !this.themeManager.settings.compactMode;
+        this.themeManager.saveSetting("compactMode", newMode);
+
+        if (newMode) {
+            tocContainer.classList.add("compact-mode");
+        } else {
+            tocContainer.classList.remove("compact-mode");
+            const popover = document.getElementById("toc-compact-popover");
+            if (popover) {
+                popover.classList.remove("show");
+                popover.style.display = "none";
+            }
+        }
+
+        this.showToast(newMode ? "Compact mode enabled" : "Compact mode disabled");
+    }
+
     delayedCreateTOC() {
         setTimeout(() => {
             console.log(`[TOC] Initial create for ${this.config.name}`);
@@ -782,29 +820,27 @@ window.TOC.UI = class UI {
         // Remove existing TOC and do a full rebuild each time
         if (existingTOC) existingTOC.remove();
 
-        const tocContainer = this.buildTOCStructure(questions);
-
-        // Wait for ThemeManager settings to load before applying
         this.themeManager.loadSettings().then(() => {
+            const tocContainer = this.buildTOCStructure(questions);
             this.themeManager.applyTheme(tocContainer, this.config.platformKey);
-        });
 
-        this.setupTOCFunctionality(tocContainer);
+            this.setupTOCFunctionality(tocContainer);
 
-        // #9: Restore search term after setup so the new list items get filtered
-        if (activeSearch && this.searchManager) {
-            const searchInput = tocContainer.querySelector(`#${window.TOC.CONSTANTS.IDS.SEARCH_INPUT}`);
-            if (searchInput) {
-                searchInput.value = activeSearch;
-                this.searchManager.updateSearchResults();
-                this.searchManager.updateClearButtonVisibility();
+            // #9: Restore search term after setup so the new list items get filtered
+            if (activeSearch && this.searchManager) {
+                const searchInput = tocContainer.querySelector(`#${window.TOC.CONSTANTS.IDS.SEARCH_INPUT}`);
+                if (searchInput) {
+                    searchInput.value = activeSearch;
+                    this.searchManager.updateSearchResults();
+                    this.searchManager.updateClearButtonVisibility();
+                }
             }
-        }
 
-        this.applyInitialPosition(tocContainer);
+            this.applyInitialPosition(tocContainer);
 
-        document.body.appendChild(tocContainer);
-        console.log(`[TOC] Created with ${questions.length} items`);
+            document.body.appendChild(tocContainer);
+            console.log(`[TOC] Created with ${questions.length} items`);
+        });
     }
 
     buildTOCStructure(questions) {
@@ -849,6 +885,10 @@ window.TOC.UI = class UI {
             e.stopPropagation();
             this.createTOC(true);
         });
+
+        if (this.themeManager.settings.compactMode) {
+            tocContainer.classList.add("compact-mode");
+        }
 
         const toggleBtn = document.createElement("button");
         toggleBtn.id = CONSTANTS.IDS.TOC_TOGGLE_BTN;
@@ -1190,6 +1230,188 @@ window.TOC.UI = class UI {
         this.setupDragFunctionality(tocContainer);
         this.setupResizeFunctionality(tocContainer);
         this.restoreCollapsedState(tocContainer);
+
+        const tocList = tocContainer.querySelector("ul");
+        if (tocList) {
+            this.setupCompactPreview(tocContainer, tocList);
+        }
+    }
+
+
+
+    setupCompactPreview(tocContainer, tocList) {
+        let popover = document.getElementById("toc-compact-popover");
+        if (popover) popover.remove();
+        popover = document.createElement("div");
+        popover.id = "toc-compact-popover";
+        document.body.appendChild(popover);
+
+        let hoverTimeout = null;
+        let hideTimeout = null;
+        let activeBadge = null;
+
+        const showPopover = (badge) => {
+            if (!badge || !tocContainer.classList.contains("compact-mode")) return;
+            
+            // Cancel any pending hide
+            if (hideTimeout) {
+                clearTimeout(hideTimeout);
+                hideTimeout = null;
+            }
+
+            const num = badge.getAttribute("data-toc-num");
+            const link = badge.querySelector("a");
+            const questionText = link ? link.title : "";
+            const answerText = badge.getAttribute("data-answer");
+            const showAnswers = this.themeManager.settings.showAnswers;
+
+            // Apply theme (accent colors and light/dark mode) matching the active platform settings
+            this.themeManager.applyTheme(popover, this.config.platformKey);
+
+            // Clean content creation
+            popover.innerHTML = "";
+
+            // Header Row: Badge & Copy buttons
+            const header = document.createElement("div");
+            header.className = "toc-popover-header";
+
+            const badgeSpan = document.createElement("span");
+            badgeSpan.className = "toc-popover-badge";
+            badgeSpan.textContent = `#${num}`;
+            header.appendChild(badgeSpan);
+
+            // Copy Row
+            const copyRow = document.createElement("div");
+            copyRow.className = "toc-popover-copy-row";
+
+            // Copy Query Button
+            const copyQBtn = document.createElement("button");
+            copyQBtn.title = "Copy query";
+            copyQBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+            copyQBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                this.copyToClipboard(questionText, "Query copied!");
+            });
+            copyRow.appendChild(copyQBtn);
+
+            // Copy Answer Button (only if answer exists)
+            if (showAnswers && answerText) {
+                const copyABtn = document.createElement("button");
+                copyABtn.title = "Copy answer";
+                copyABtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
+                copyABtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    this.copyToClipboard(answerText, "Answer copied!");
+                });
+                copyRow.appendChild(copyABtn);
+            }
+            header.appendChild(copyRow);
+            popover.appendChild(header);
+
+            // Question Text
+            const questionP = document.createElement("p");
+            questionP.className = "toc-popover-question";
+            questionP.textContent = questionText;
+            popover.appendChild(questionP);
+
+            // Answer section (if answer exists & showAnswers is active)
+            if (showAnswers && answerText) {
+                const divider = document.createElement("div");
+                divider.className = "toc-popover-divider";
+                popover.appendChild(divider);
+
+                const answerSection = document.createElement("div");
+                answerSection.className = "toc-popover-answer-section";
+
+                const answerTitle = document.createElement("div");
+                answerTitle.className = "toc-popover-answer-title";
+                answerTitle.textContent = "AI Answer";
+                answerSection.appendChild(answerTitle);
+
+                const answerBody = document.createElement("p");
+                answerBody.className = "toc-popover-answer-body";
+                answerBody.textContent = answerText;
+                answerSection.appendChild(answerBody);
+
+                popover.appendChild(answerSection);
+            }
+
+            // Position popover relative to badge target
+            const badgeRect = badge.getBoundingClientRect();
+            
+            // Show popover while hidden to measure its dimensions without flashing at (0,0)
+            popover.style.visibility = "hidden";
+            popover.style.display = "block";
+            const popoverRect = popover.getBoundingClientRect();
+
+            // Calculate horizontal position: centered with badge
+            let left = badgeRect.left + (badgeRect.width / 2) - (popoverRect.width / 2);
+            // Clamp to screen bounds
+            left = Math.max(10, Math.min(left, window.innerWidth - popoverRect.width - 10));
+
+            // Calculate vertical position: default below badge, but flip above if too close to bottom
+            let top = badgeRect.bottom + 8;
+            if (top + popoverRect.height > window.innerHeight - 10 && badgeRect.top - popoverRect.height - 8 > 10) {
+                top = badgeRect.top - popoverRect.height - 8;
+            }
+
+            popover.style.left = `${left}px`;
+            popover.style.top = `${top}px`;
+            popover.style.display = "";
+            popover.style.visibility = "";
+            popover.classList.add("show");
+            activeBadge = badge;
+        };
+
+        const hidePopover = () => {
+            if (hideTimeout) return;
+            hideTimeout = setTimeout(() => {
+                popover.classList.remove("show");
+                activeBadge = null;
+            }, 100);
+        };
+
+        // Event delegation for badges
+        tocList.addEventListener("mouseover", (e) => {
+            const badge = e.target.closest("li");
+            if (!badge) return;
+
+            if (hoverTimeout) clearTimeout(hoverTimeout);
+            
+            if (activeBadge === badge) {
+                if (hideTimeout) {
+                    clearTimeout(hideTimeout);
+                    hideTimeout = null;
+                }
+                return;
+            }
+
+            hoverTimeout = setTimeout(() => {
+                showPopover(badge);
+            }, 100);
+        });
+
+        tocList.addEventListener("mouseout", (e) => {
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = null;
+            }
+            hidePopover();
+        });
+
+        // Let cursor hover inside the popover without hiding it
+        popover.addEventListener("mouseover", () => {
+            if (hideTimeout) {
+                clearTimeout(hideTimeout);
+                hideTimeout = null;
+            }
+        });
+
+        popover.addEventListener("mouseout", (e) => {
+            // Check if cursor moved to a child element inside popover
+            if (popover.contains(e.relatedTarget)) return;
+            hidePopover();
+        });
     }
 
     restoreCollapsedState(tocContainer) {
