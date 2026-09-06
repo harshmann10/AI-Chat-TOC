@@ -53,7 +53,9 @@ const DEFAULT_SETTINGS = {
     themeMode: "system", // light, dark, system
     themes: DEFAULT_THEMES,
     showAnswers: false,
-    compactMode: false
+    compactMode: false,
+    experimentalAPI: false, // v1.9.0: C3 backend API (auto for /share/, opt-in for /c/)
+    cacheEnabled: true // v1.9.0: persistent TOC cache (ChatGPT /c/<id> + /share/<id>)
 };
 
 // Make it available to content script and popup

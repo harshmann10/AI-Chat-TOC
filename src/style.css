@@ -90,7 +90,29 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: all var(--toc-transition-slow);
+    transition: background var(--toc-transition-slow),
+        border-color var(--toc-transition-slow),
+        box-shadow var(--toc-transition-slow),
+        color var(--toc-transition-slow);
+}
+
+/* Settings Update Accent Glow / Feedback Animation */
+@keyframes tocSettingUpdatedGlow {
+    0% {
+        box-shadow: var(--toc-shadow-xl), 0 0 0 0 var(--toc-accent);
+    }
+
+    35% {
+        box-shadow: var(--toc-shadow-xl), 0 0 0 4px var(--toc-accent-light), 0 0 16px var(--toc-accent);
+    }
+
+    100% {
+        box-shadow: var(--toc-shadow-xl), 0 0 0 0 transparent;
+    }
+}
+
+#toc-extension.toc-setting-updated {
+    animation: tocSettingUpdatedGlow 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* =================================================================== */
@@ -762,7 +784,7 @@
     display: none;
 }
 
-#toc-refresh-btn {
+#toc-scan-btn {
     width: var(--toc-button-size);
     height: var(--toc-button-size);
     display: flex;
@@ -776,7 +798,7 @@
     transition: all var(--toc-transition-fast);
 }
 
-#toc-refresh-btn::before {
+#toc-scan-btn::before {
     content: "";
     width: 14px;
     height: 14px;
@@ -786,17 +808,40 @@
     transition: background-color var(--toc-transition-fast);
 }
 
-#toc-refresh-btn:hover {
+#toc-scan-btn:hover {
     background: var(--toc-bg-hover);
     border-color: var(--toc-accent);
 }
 
-#toc-refresh-btn:hover::before {
+#toc-scan-btn:hover::before {
     background-color: var(--toc-accent);
 }
 
-#toc-extension.collapsed #toc-refresh-btn {
+#toc-scan-btn.scanning {
+    opacity: 0.6;
+    cursor: pointer;
+    animation: toc-scan-pulse 1s ease-in-out infinite;
+}
+
+@keyframes toc-scan-pulse {
+
+    0%,
+    100% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+#toc-extension.collapsed #toc-scan-btn {
     display: none;
+}
+
+/* Legacy alias for backward compat */
+#toc-refresh-btn {
+    display: none !important;
 }
 
 #toc-extension.collapsed .toc-header-buttons {

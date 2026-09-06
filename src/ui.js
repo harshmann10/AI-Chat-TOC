@@ -272,10 +272,10 @@ window.TOC.DragManager = class DragManager {
 
         const isToggleBtn = e.target.closest(`#${window.TOC.CONSTANTS.IDS.TOC_TOGGLE_BTN}`);
         const isExportBtn = e.target.closest("#toc-export-btn");
-        const isRefreshBtn = e.target.closest("#toc-refresh-btn");
+        const isScanBtn = e.target.closest("#toc-scan-btn") || e.target.closest("#toc-refresh-btn");
         const isCollapsed = this.element.classList.contains(window.TOC.CONSTANTS.CLASSES.COLLAPSED);
 
-        if (isExportBtn || isRefreshBtn) return;
+        if (isExportBtn || isScanBtn) return;
 
         if (isToggleBtn && !isCollapsed) {
             e.preventDefault();
@@ -521,8 +521,8 @@ window.TOC.ResizeManager = class ResizeManager {
         const C = window.TOC.CONSTANTS.CONSTRAINTS;
 
         // When resizing from the left, space to the left is bounded by rect.right - padding
-        const maxWidth = this.isLeftResize 
-            ? Math.min(C.MAX_WIDTH, (rect.right - padding)) 
+        const maxWidth = this.isLeftResize
+            ? Math.min(C.MAX_WIDTH, (rect.right - padding))
             : Math.min(C.MAX_WIDTH, (window.innerWidth - rect.left - padding));
 
         return {
@@ -647,19 +647,60 @@ window.TOC.UI = class UI {
         this.dragManager = null;
         this.createTimer = null; // Debounce timer
         this.lastCreateTime = 0; // Prevent rapid creates
+        this.isNavigating = false;
+        this._navTimer = null;
+        this._started = false;
 
+        // Construction registers listeners only — scanners start in start().
         this.init();
     }
 
     init() {
+        try {
+            const stray = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+            if (stray && stray.parentNode) stray.parentNode.removeChild(stray);
+        } catch (e) { /* ignore */ }
         this.setupEventListeners();
-        this.config.setupMonitor(() => this.createTOC());
-        this.delayedCreateTOC();
+    }
+
+    /**
+     * Async startup sequence (race-safe):
+     * 1. setupMonitor() -> Virtual.init() hydrates cache before C1/C6.
+     * 2. Await its promise so cached render lands before background scans.
+     * 3. The Virtual.init update callback performs the first render.
+     * 4. A short safety fallback covers cache-miss + slow DOM mount.
+     */
+    async start() {
+        if (this._started) return;
+        this._started = true;
+        try {
+            const maybePromise = this.config.setupMonitor(() => this.createTOC());
+            if (maybePromise && typeof maybePromise.then === 'function') {
+                await maybePromise;
+            }
+        } catch (e) {
+            console.debug('[TOC UI] start failed', e);
+        }
+        // Safety fallback (perceived-instant primary comes from cache callback):
+        // if the store populated but no TOC exists (slow SPA mount), render once.
+        // Uses the platform's pageLoad delay so non-ChatGPT timing matches legacy.
+        setTimeout(() => {
+            try {
+                if (document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER)) return;
+                const sm = window.TOC && window.TOC.StoreManager;
+                if (!sm) return;
+                const store = sm.getStore();
+                if (store && store.size() > 0) {
+                    console.log('[TOC UI] Safety fallback render');
+                    this.createTOC();
+                }
+            } catch (e) { /* ignore */ }
+        }, this.config.delays.pageLoad);
     }
 
     setupEventListeners() {
-        window.addEventListener("load", () => this.delayedCreateTOC());
-        window.addEventListener("pageshow", () => this.delayedCreateTOC());
+        window.addEventListener("load", () => this.ensureTOC());
+        window.addEventListener("pageshow", () => this.ensureTOC());
         window.addEventListener("resize", () => this.handleWindowResize());
 
         document.addEventListener("click", (e) => this.handleDocumentClick(e), true);
@@ -681,8 +722,11 @@ window.TOC.UI = class UI {
 
         // Listen for theme/settings changes from popup
         this.themeManager.onSettingsChanged(() => {
-            // Reload settings first, then rebuild the TOC to reflect changes (e.g. showAnswers)
             this.themeManager.loadSettings().then(() => {
+                try {
+                    const old = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+                    if (old && old.parentNode) old.parentNode.removeChild(old);
+                } catch (e) { /* ignore */ }
                 this.createTOC(true);
             });
         });
@@ -776,11 +820,26 @@ window.TOC.UI = class UI {
         this.showToast(newMode ? "Compact mode enabled" : "Compact mode disabled");
     }
 
-    delayedCreateTOC() {
+    ensureTOC() {
+        // Safety-net render only: never the primary first render.
         setTimeout(() => {
-            console.log(`[TOC] Initial create for ${this.config.name}`);
-            this.createTOC();
+            try {
+                if (document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER)) return;
+                const sm = window.TOC && window.TOC.StoreManager;
+                if (!sm) return;
+                // Don't force-render an empty store on new/empty chats
+                const store = sm.getStore();
+                if (store && store.size() > 0) {
+                    console.log(`[TOC] Safety-net create for ${this.config.name}`);
+                    this.createTOC();
+                }
+            } catch (e) { /* ignore */ }
         }, this.config.delays.pageLoad);
+    }
+
+    delayedCreateTOC() {
+        // Legacy alias preserved for backward compat — now a guarded safety net.
+        this.ensureTOC();
     }
 
     // Debounced version - prevents multiple rapid calls
@@ -797,13 +856,30 @@ window.TOC.UI = class UI {
     }
 
     createTOC(force = false) {
+        // Suppress rebuild during active user navigation
+        if (this.isNavigating && !force) {
+            console.log("[TOC] Skipping - user is navigating");
+            return;
+        }
+
         // Throttle: prevent rapid successive creates
         const now = Date.now();
-        if (!force && now - this.lastCreateTime < 500) {
+        if (!force && now - this.lastCreateTime < 300) {
             console.log("[TOC] Skipping - too soon since last create");
             return;
         }
         this.lastCreateTime = now;
+
+        // Session guard: a render started for Chat A must never replace Chat B's
+        // TOC if navigation happens during the async settings load below.
+        let renderUrl = null;
+        let renderConv = null;
+        try {
+            renderUrl = location.href;
+            renderConv = (window.TOC && window.TOC.ConversationIdentity && typeof window.TOC.ConversationIdentity.getCurrentId === 'function')
+                ? window.TOC.ConversationIdentity.getCurrentId()
+                : null;
+        } catch (e) { /* ignore */ }
 
         const questions = this.config.getQueries();
         if (questions.length === 0) {
@@ -811,34 +887,92 @@ window.TOC.UI = class UI {
             return;
         }
 
-        // #9: Preserve active search term across rebuilds
         const existingTOC = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
-        const activeSearch = existingTOC
-            ? (existingTOC.querySelector(`#${window.TOC.CONSTANTS.IDS.SEARCH_INPUT}`)?.value || "")
-            : "";
 
-        // Remove existing TOC and do a full rebuild each time
-        if (existingTOC) existingTOC.remove();
+        // FAST PATH: If TOC already exists, update list in-place (ZERO FLICKER)
+        if (existingTOC) {
+            const tocList = existingTOC.querySelector("ul");
+            const countEl = existingTOC.querySelector(".toc-count");
+            if (tocList) {
+                const savedScrollTop = tocList.scrollTop;
 
+                // Check if rendered questions are identical to avoid unnecessary DOM work
+                const currentLinks = Array.from(tocList.querySelectorAll(".toc-question-row a"));
+                const isSame = currentLinks.length === questions.length &&
+                    currentLinks.every((a, i) => {
+                        const q = questions[i];
+                        const qText = typeof q === "string" ? q : q.text;
+                        const storeId = q._storeId || q.id;
+                        return a.title === qText && (!storeId || a.getAttribute("data-store-id") === storeId);
+                    });
+
+                if (isSame && !force) {
+                    return;
+                }
+
+                // In-place update: repopulate list without removing the container
+                tocList.innerHTML = "";
+                this.populateTOCList(tocList, questions);
+                tocList.scrollTop = savedScrollTop;
+
+                if (countEl) {
+                    countEl.textContent = `${questions.length} queries`;
+                }
+
+                // Appearance sync: the container is reused, so re-apply theme
+                // colors/mode and compact class for instant settings updates.
+                try {
+                    this.themeManager.applyTheme(existingTOC, this.config.platformKey);
+                    if (this.themeManager.settings.compactMode) {
+                        existingTOC.classList.add("compact-mode");
+                    } else {
+                        existingTOC.classList.remove("compact-mode");
+                    }
+                } catch (e) { /* never break list update */ }
+
+                if (this.searchManager) {
+                    const listItems = Array.from(tocList.querySelectorAll("li"));
+                    this.searchManager.addListItems(listItems);
+                    this.searchManager.updateSearchResults();
+                    this.searchManager.updateClearButtonVisibility();
+                }
+
+                console.log(`[TOC] Updated in-place with ${questions.length} items`);
+                return;
+            }
+        }
+
+        // SLOW PATH: First-time creation (runs only once on initial mount)
         this.themeManager.loadSettings().then(() => {
+            // Abort stale renders from a previous conversation (Chat A must not
+            // replace Chat B's TOC after an SPA navigation during the await).
+            try {
+                if (renderUrl !== null && location.href !== renderUrl) return;
+                if (window.TOC && window.TOC.ConversationIdentity && typeof window.TOC.ConversationIdentity.getCurrentId === 'function') {
+                    if (window.TOC.ConversationIdentity.getCurrentId() !== renderConv) return;
+                }
+            } catch (e) { /* ignore */ }
             const tocContainer = this.buildTOCStructure(questions);
             this.themeManager.applyTheme(tocContainer, this.config.platformKey);
 
             this.setupTOCFunctionality(tocContainer);
 
-            // #9: Restore search term after setup so the new list items get filtered
-            if (activeSearch && this.searchManager) {
-                const searchInput = tocContainer.querySelector(`#${window.TOC.CONSTANTS.IDS.SEARCH_INPUT}`);
-                if (searchInput) {
-                    searchInput.value = activeSearch;
-                    this.searchManager.updateSearchResults();
-                    this.searchManager.updateClearButtonVisibility();
-                }
-            }
-
             this.applyInitialPosition(tocContainer);
 
-            document.body.appendChild(tocContainer);
+            const currentTOC = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+            if (currentTOC && currentTOC.parentNode) {
+                currentTOC.replaceWith(tocContainer);
+            } else {
+                document.body.appendChild(tocContainer);
+            }
+
+            // Pulse glow feedback animation so user visually sees the update
+            tocContainer.classList.add("toc-setting-updated");
+            if (this._settingUpdateTimer) clearTimeout(this._settingUpdateTimer);
+            this._settingUpdateTimer = setTimeout(() => {
+                try { tocContainer.classList.remove("toc-setting-updated"); } catch (e) { }
+            }, 650);
+
             console.log(`[TOC] Created with ${questions.length} items`);
         });
     }
@@ -877,13 +1011,13 @@ window.TOC.UI = class UI {
             this.showExportMenu(tocContainer);
         });
 
-        // Refresh button
-        const refreshBtn = document.createElement("button");
-        refreshBtn.id = "toc-refresh-btn";
-        refreshBtn.title = "Refresh TOC";
-        refreshBtn.addEventListener("click", (e) => {
+        // Scan button (replaces Refresh universally — handles small + large chats)
+        const scanBtn = document.createElement("button");
+        scanBtn.id = "toc-scan-btn";
+        scanBtn.title = "Scan full chat";
+        scanBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            this.createTOC(true);
+            this.handleScanClick(scanBtn);
         });
 
         if (this.themeManager.settings.compactMode) {
@@ -895,7 +1029,7 @@ window.TOC.UI = class UI {
         toggleBtn.title = "Toggle Table of Contents";
 
         headerButtons.appendChild(exportBtn);
-        headerButtons.appendChild(refreshBtn);
+        headerButtons.appendChild(scanBtn);
         headerButtons.appendChild(toggleBtn);
 
         headerContent.appendChild(dragHandle);
@@ -923,25 +1057,110 @@ window.TOC.UI = class UI {
         const tocList = document.createElement("ul");
 
         // --- EVENT DELEGATION: Handle all clicks on links and copy buttons in one place ---
-        tocList.addEventListener("click", (e) => {
+        // ChatGPT: Virtual.Navigator (storeId/bar-based). Other platforms: direct
+        // DOM scroll via toc-question-N / toc-answer-N element IDs (no navigator).
+        tocList.addEventListener("click", async (e) => {
             const link = e.target.closest("a");
             const qCopy = e.target.closest(".toc-copy-btn");
             const aCopy = e.target.closest(".toc-answer-copy");
-
             const answerNav = e.target.closest(".toc-answer-content[data-nav-id]");
 
             if (link) {
                 e.preventDefault();
-                const questionId = link.getAttribute("href").substring(1);
-                const targetElement = document.getElementById(questionId);
-                if (targetElement) {
-                    targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                this.isNavigating = true;
+                if (this._navTimer) clearTimeout(this._navTimer);
+                this._navTimer = setTimeout(() => { this.isNavigating = false; }, 800);
+                // Preserve TOC list scroll: navigation scrolls chat -> C6 observer may
+                // rebuild TOC -> recreated ul would reset to top. Capture + restore.
+                const tocListEl = tocList;
+                const savedListScroll = tocListEl ? tocListEl.scrollTop : 0;
+                const restoreListScroll = () => {
+                    try {
+                        const cur = document.querySelector(`#${window.TOC.CONSTANTS.IDS.TOC_CONTAINER} ul`);
+                        if (cur && savedListScroll > 0) cur.scrollTop = savedListScroll;
+                    } catch (err) { /* ignore */ }
+                };
+                const storeId = link.getAttribute("data-store-id");
+                const promptIdx = link.getAttribute("data-prompt-idx");
+                // Non-ChatGPT platforms: direct DOM navigation (persistent cache
+                // and Virtual.Navigator are ChatGPT-only). Never call the
+                // offset-based navigator here — its container/offsetTop guess
+                // can scroll nowhere and mask the DOM fallback via `ok=true`.
+                if (this.config.platformKey !== 'chatgpt') {
+                    const questionId = link.getAttribute("href").substring(1);
+                    const targetElement = document.getElementById(questionId);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                    restoreListScroll();
+                    return;
+                }
+                if (storeId && window.TOC && window.TOC.Virtual) {
+                    let ok = await window.TOC.Virtual.Navigator.navigateTo(storeId, this.config.platformKey);
+                    // Fallback: try prompt bar directly if store lookup failed
+                    if (!ok && promptIdx !== null) {
+                        const bar = document.querySelector(`[data-toc-item-index="${promptIdx}"]`);
+                        if (bar) { bar.click(); ok = true; }
+                    }
+                    if (!ok) {
+                        const questionId = link.getAttribute("href").substring(1);
+                        const targetElement = document.getElementById(questionId);
+                        if (targetElement) {
+                            targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                            ok = true;
+                        }
+                    }
+                    if (!ok) this.showToast("Message not in view");
+                    restoreListScroll();
+                } else {
+                    const questionId = link.getAttribute("href").substring(1);
+                    const targetElement = document.getElementById(questionId);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                    restoreListScroll();
                 }
             } else if (answerNav && !e.target.closest(".toc-answer-copy")) {
                 e.preventDefault();
-                const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
-                if (targetElement) {
-                    targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                this.isNavigating = true;
+                if (this._navTimer) clearTimeout(this._navTimer);
+                this._navTimer = setTimeout(() => { this.isNavigating = false; }, 800);
+                const savedAnswerScroll = tocList ? tocList.scrollTop : 0;
+                const restoreAnswerScroll = () => {
+                    try {
+                        const cur = document.querySelector(`#${window.TOC.CONSTANTS.IDS.TOC_CONTAINER} ul`);
+                        if (cur && savedAnswerScroll > 0) cur.scrollTop = savedAnswerScroll;
+                    } catch (err) { /* ignore */ }
+                };
+                const storeId = answerNav.getAttribute("data-store-id") || answerNav.getAttribute("data-nav-id");
+                // Non-ChatGPT platforms: direct DOM navigation to the answer
+                // element ID (see question handler above for rationale).
+                if (this.config.platformKey !== 'chatgpt') {
+                    const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                    restoreAnswerScroll();
+                    return;
+                }
+                if (storeId && window.TOC && window.TOC.Virtual) {
+                    // Try storeId first, fallback to element id
+                    let ok = await window.TOC.Virtual.Navigator.navigateTo(storeId, this.config.platformKey);
+                    if (!ok) {
+                        const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
+                        if (targetElement) {
+                            targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                            ok = true;
+                        }
+                    }
+                    if (!ok) this.showToast("Message not in view");
+                    restoreAnswerScroll();
+                } else {
+                    const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                    restoreAnswerScroll();
                 }
             } else if (qCopy) {
                 e.preventDefault();
@@ -1170,6 +1389,14 @@ window.TOC.UI = class UI {
             link.href = `#${questionId}`;
             link.setAttribute("data-num", index + 1);
             link.title = questionText;
+            // v1.9.0: storeId for virtual navigation (Trap 15 — never store element)
+            // Fix: Use real store id, fallback to questionId only if no store
+            const storeId = item._storeId || item.id || (item.promptBarIndex !== undefined && item.promptBarIndex !== null ? `c1-${item.promptBarIndex}` : questionId);
+            link.setAttribute("data-store-id", storeId);
+            // Also store promptBarIndex for fallback navigation
+            if (item.promptBarIndex !== undefined && item.promptBarIndex !== null) {
+                link.setAttribute("data-prompt-idx", item.promptBarIndex);
+            }
 
             const qSpan = document.createElement("span");
             qSpan.className = "toc-question-text";
@@ -1185,7 +1412,7 @@ window.TOC.UI = class UI {
             copyBtn.className = "toc-copy-btn";
             copyBtn.title = "Copy query";
             copyBtn.setAttribute("data-text", questionText);
-            
+
             questionRow.appendChild(copyBtn);
             listItem.appendChild(questionRow);
 
@@ -1207,6 +1434,9 @@ window.TOC.UI = class UI {
                 answerContent.appendChild(badge);
                 answerContent.appendChild(answerSpan);
                 answerContent.setAttribute("data-nav-id", answerElement ? answerId : questionId);
+                // v1.9.0: storeId for virtual navigation
+                const answerStoreId = item._answerId || answerId;
+                if (answerStoreId) answerContent.setAttribute("data-store-id", answerStoreId);
 
                 // Answer copy button (stores text in data attribute for delegation)
                 const answerCopyBtn = document.createElement("button");
@@ -1252,7 +1482,7 @@ window.TOC.UI = class UI {
 
         const showPopover = (badge) => {
             if (!badge || !tocContainer.classList.contains("compact-mode")) return;
-            
+
             // Cancel any pending hide
             if (hideTimeout) {
                 clearTimeout(hideTimeout);
@@ -1338,7 +1568,7 @@ window.TOC.UI = class UI {
 
             // Position popover relative to badge target
             const badgeRect = badge.getBoundingClientRect();
-            
+
             // Show popover while hidden to measure its dimensions without flashing at (0,0)
             popover.style.visibility = "hidden";
             popover.style.display = "block";
@@ -1377,7 +1607,7 @@ window.TOC.UI = class UI {
             if (!badge) return;
 
             if (hoverTimeout) clearTimeout(hoverTimeout);
-            
+
             if (activeBadge === badge) {
                 if (hideTimeout) {
                     clearTimeout(hideTimeout);
@@ -1516,6 +1746,72 @@ window.TOC.UI = class UI {
             document.activeElement.matches(promptInput)
         ) {
             this.debouncedCreateTOC();
+        }
+    }
+
+    // v1.9.0: Scan handler (replaces Refresh) — handles small + large chats
+    async handleScanClick(btn) {
+        if (!window.TOC || !window.TOC.Virtual) {
+            this.createTOC(true);
+            return;
+        }
+        // Fix: If stuck, force reset
+        if (btn.classList.contains('scanning')) {
+            if (window.TOC.Virtual.C7.forceReset) window.TOC.Virtual.C7.forceReset();
+            btn.classList.remove('scanning');
+            btn.title = 'Scan full chat';
+            return;
+        }
+        btn.classList.add('scanning');
+        btn.title = 'Scanning...';
+        const originalTitle = 'Scan full chat';
+        const tocContainer = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+        const countEl = tocContainer ? tocContainer.querySelector('.toc-count') : null;
+        const originalCount = countEl ? countEl.textContent : '';
+        // Fix: Count user only for toast (not user+assistant)
+        const beforeUserCount = (() => {
+            try {
+                if (window.TOC.StoreManager) return window.TOC.StoreManager.getStore().getUserMessages().length;
+            } catch (e) { }
+            return document.querySelectorAll('#toc-extension li').length;
+        })();
+        const updateProgress = (info) => {
+            if (!countEl) return;
+            if (info.paused) {
+                countEl.textContent = 'Scan paused — keep tab active';
+                this.showToast('Scan paused — keep tab active for full scan');
+            } else if (info.isSmall) {
+                countEl.textContent = `Scanned ${info.found} messages`;
+            } else if (info.found !== undefined) {
+                countEl.textContent = `Scanning... ${info.found} found`;
+            }
+        };
+        try {
+            let scanSession = null;
+            try {
+                if (window.TOC.Virtual._captureSession) scanSession = window.TOC.Virtual._captureSession();
+            } catch (e) { /* ignore */ }
+            await window.TOC.Virtual.C7.scan(this.config.platformKey, updateProgress, (found) => {
+                btn.classList.remove('scanning');
+                btn.title = originalTitle;
+                if (countEl) countEl.textContent = originalCount;
+                this.createTOC(true);
+                // Fix: Toast counts user only, not total
+                let userNew = found;
+                try {
+                    if (window.TOC.StoreManager) {
+                        const afterUser = window.TOC.StoreManager.getStore().getUserMessages().length;
+                        userNew = Math.max(0, afterUser - beforeUserCount);
+                    }
+                } catch (e) { }
+                this.showToast(userNew > 0 ? `Scan complete — ${userNew} new messages` : 'Scan complete');
+            }, scanSession);
+        } catch (e) {
+            console.warn('[TOC] Scan failed', e);
+            btn.classList.remove('scanning');
+            btn.title = originalTitle;
+            if (countEl) countEl.textContent = originalCount;
+            this.showToast('Scan failed');
         }
     }
 };
