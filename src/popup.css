@@ -44,14 +44,16 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 16px;
+    padding: 12px 14px;
     border-bottom: 1px solid var(--p-border);
+    position: relative;
 }
 
 .header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .header-icon img {
@@ -59,19 +61,82 @@ body {
     border-radius: 6px;
 }
 
-.header-text h1 {
+.header-text {
+    display: flex;
+    align-items: center;
+}
+
+.header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.header-title-row h1 {
     font-size: 15px;
     font-weight: 700;
     letter-spacing: -0.02em;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 .header-version {
     font-size: 10px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--p-text-muted);
     background: var(--p-bg-card);
+    border: 1px solid var(--p-border);
     padding: 1px 5px;
     border-radius: 4px;
+    line-height: 1.3;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.header-sponsor-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #db2777;
+    background: rgba(219, 39, 119, 0.08);
+    border: 1px solid rgba(219, 39, 119, 0.22);
+    border-radius: 999px;
+    text-decoration: none;
+    cursor: pointer;
+    line-height: 1.2;
+    transition: all 0.18s ease;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.header-sponsor-btn:hover {
+    background: rgba(219, 39, 119, 0.16);
+    border-color: rgba(219, 39, 119, 0.45);
+    color: #be185d;
+    transform: translateY(-0.5px);
+    box-shadow: 0 2px 6px rgba(219, 39, 119, 0.2);
+}
+
+.header-sponsor-btn:active {
+    transform: translateY(0);
+}
+
+.header-sponsor-btn .sponsor-heart {
+    fill: currentColor;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.header-sponsor-btn:hover .sponsor-heart {
+    transform: scale(1.18);
 }
 
 .header-status {
@@ -88,7 +153,7 @@ body {
     opacity: 0;
     transform: translateY(-2px);
     transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-                transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     pointer-events: none;
 }
 
@@ -570,9 +635,17 @@ body {
 }
 
 @keyframes pulseBadge {
-    0% { transform: scale(0.95); }
-    50% { transform: scale(1.04); }
-    100% { transform: scale(1); }
+    0% {
+        transform: scale(0.95);
+    }
+
+    50% {
+        transform: scale(1.04);
+    }
+
+    100% {
+        transform: scale(1);
+    }
 }
 
 /* ── Dark Mode (for the popup itself) ─────────────────────────── */

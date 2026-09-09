@@ -13,9 +13,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Update version from manifest ────────────────────────────
     const versionSpan = document.querySelector('.header-version');
     if (versionSpan) {
-        const manifest = (typeof chrome !== 'undefined') ? chrome.runtime.getManifest() : browser.runtime.getManifest();
-        versionSpan.textContent = `v${manifest.version}`;
+        try {
+            const manifest = (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
+                ? chrome.runtime.getManifest()
+                : (typeof browser !== 'undefined' && browser.runtime && browser.runtime.getManifest)
+                    ? browser.runtime.getManifest()
+                    : null;
+            if (manifest && manifest.version) {
+                versionSpan.textContent = `v${manifest.version}`;
+            } else {
+                versionSpan.textContent = 'v1.9.0';
+            }
+        } catch (e) {
+            versionSpan.textContent = 'v1.9.0';
+        }
     }
+
+    // ── External links (MV2 / MV3 safe tab opener) ───────────────
+    document.addEventListener('click', (e) => {
+        const link = e.target.closest('a[href]');
+        if (!link) return;
+        const href = link.getAttribute('href');
+        if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+            e.preventDefault();
+            const api = (typeof chrome !== 'undefined' && chrome.tabs)
+                ? chrome
+                : (typeof browser !== 'undefined' && browser.tabs)
+                    ? browser
+                    : null;
+            if (api && api.tabs && api.tabs.create) {
+                api.tabs.create({ url: href });
+            } else {
+                window.open(href, '_blank', 'noopener,noreferrer');
+            }
+        }
+    });
 
     // ── Tab switching ────────────────────────────────────────────
     const tabs = document.querySelectorAll('.tab');
