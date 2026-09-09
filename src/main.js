@@ -220,7 +220,10 @@ const SITES = {
             userMessage: 'div[data-message-author-role="user"]',
             sendButton: '[data-testid="send-button"]',
             promptInput: "#prompt-textarea",
-            chatContainer: "main",
+            chatContainer: 'div[class*="scrollbar-gutter"]',
+            chatContainerFallback: "main",
+            promptBar: '[data-toc-item-index]',
+            promptBarFallback: 'button[aria-label^="Prompt"]',
         },
         delays: {
             pageLoad: 2000,
@@ -233,17 +236,24 @@ const SITES = {
         lastUrl: "",
 
         getQueries: function () {
+            // v1.9.0: Prefer MessageStore (C1+C6+C3) when available, fallback to DOM
+            try {
+                if (window.TOC && window.TOC.StoreManager) {
+                    const store = window.TOC.StoreManager.getStore();
+                    if (store && store.size() > 0) {
+                        const legacy = store.toLegacyQueries();
+                        if (legacy.length > 0) return legacy;
+                    }
+                }
+            } catch (e) { /* fallback to DOM */ }
             const queryElements = document.querySelectorAll(this.selectors.userMessage);
             const queries = [];
             queryElements.forEach((el) => {
                 let text = el.textContent.trim();
                 if (!text) text = "[Attachment]";
-
-                // Extract AI answer: walk up to the turn container, then find the assistant message
                 let answer = "";
                 let answerElement = null;
                 try {
-                    // ChatGPT groups messages in turn containers
                     const turnContainer = el.closest('[data-testid^="conversation-turn"]') || el.closest('article') || el.parentElement;
                     if (turnContainer) {
                         let nextTurn = turnContainer.nextElementSibling;
@@ -254,20 +264,25 @@ const SITES = {
                                 answer = assistantMsg.textContent.trim();
                                 break;
                             }
-                            // If we hit another user message, stop
                             if (nextTurn.querySelector('[data-message-author-role="user"]')) break;
                             nextTurn = nextTurn.nextElementSibling;
                         }
                     }
                 } catch (e) { /* silently ignore */ }
-
                 queries.push({ text, element: el, answer, answerElement });
             });
             return queries;
         },
 
         setupMonitor: function (onUpdate) {
-            TOC_PERF.createSharedMonitor(this, onUpdate);
+            // v1.9.0: Use Virtual (C1+C6+C3) for ChatGPT, fallback to legacy
+            // Returns Virtual.init promise so UI.start() can await cache hydration.
+            if (window.TOC && window.TOC.Virtual) {
+                return window.TOC.Virtual.init('chatgpt', onUpdate);
+            } else {
+                TOC_PERF.createSharedMonitor(this, onUpdate);
+                return Promise.resolve();
+            }
         },
     },
 
@@ -386,7 +401,12 @@ const SITES = {
         },
 
         setupMonitor: function (onUpdate) {
-            TOC_PERF.createSharedMonitor(this, onUpdate);
+            if (window.TOC && window.TOC.Virtual) {
+                return window.TOC.Virtual.init('gemini', onUpdate);
+            } else {
+                TOC_PERF.createSharedMonitor(this, onUpdate);
+                return Promise.resolve();
+            }
         },
     },
 
@@ -467,7 +487,12 @@ const SITES = {
         },
 
         setupMonitor: function (onUpdate) {
-            TOC_PERF.createSharedMonitor(this, onUpdate, { minQueries: 2 });
+            if (window.TOC && window.TOC.Virtual) {
+                return window.TOC.Virtual.init('perplexity', onUpdate);
+            } else {
+                TOC_PERF.createSharedMonitor(this, onUpdate, { minQueries: 2 });
+                return Promise.resolve();
+            }
         },
     },
 
@@ -594,7 +619,12 @@ const SITES = {
         },
 
         setupMonitor: function (onUpdate) {
-            TOC_PERF.createSharedMonitor(this, onUpdate);
+            if (window.TOC && window.TOC.Virtual) {
+                return window.TOC.Virtual.init('claude', onUpdate);
+            } else {
+                TOC_PERF.createSharedMonitor(this, onUpdate);
+                return Promise.resolve();
+            }
         },
     },
 
@@ -682,7 +712,12 @@ const SITES = {
         },
 
         setupMonitor: function (onUpdate) {
-            TOC_PERF.createSharedMonitor(this, onUpdate);
+            if (window.TOC && window.TOC.Virtual) {
+                return window.TOC.Virtual.init('grok', onUpdate);
+            } else {
+                TOC_PERF.createSharedMonitor(this, onUpdate);
+                return Promise.resolve();
+            }
         },
     },
 };
@@ -703,6 +738,108 @@ const SITES = {
     }
 
     if (activeAdapter) {
-        new window.TOC.UI(activeAdapter);
+        const ui = new window.TOC.UI(activeAdapter);
+
+        // Async startup: UI.start() awaits Virtual.init() (cache hydrate before C1/C6).
+        // The Virtual.init update callback performs the first render.
+        // Fallbacks below stay gated on init completion so they can never flash
+        // provisional stubs over hydrated cached titles.
+        let initDone = false;
+        try {
+            const started = ui.start();
+            if (started && typeof started.then === 'function') {
+                started.then(() => { initDone = true; }).catch((e) => { initDone = true; console.debug('[TOC Router] UI start failed', e); });
+            } else {
+                initDone = true;
+            }
+        } catch (e) {
+            initDone = true;
+            console.debug('[TOC Router] UI start error', e);
+        }
+
+        // Fix: Ensure C1 runs before first TOC creation + safety net
+        // Also handle chat switching (SPA) — re-init Virtual on URL change
+        if (window.TOC && window.TOC.Virtual && window.TOC.StoreManager) {
+            const getSession = () => {
+                try {
+                    if (window.TOC.Virtual._captureSession) return window.TOC.Virtual._captureSession();
+                } catch (e) { /* ignore */ }
+                return null;
+            };
+            let ensureAttempts = 0;
+            const ensureStorePopulated = () => {
+                // Never bypass hydration: wait for Virtual.init() to finish first.
+                if (!initDone) {
+                    if (ensureAttempts++ < 10) setTimeout(ensureStorePopulated, 800);
+                    return;
+                }
+                const store = window.TOC.StoreManager.getStore();
+                // If store empty but bars exist, C1 missed — retry
+                if (store.size() === 0) {
+                    const bars = document.querySelectorAll('[data-toc-item-index]');
+                    if (bars.length > 0) {
+                        console.log('[TOC Router] Store empty but bars exist, retrying C1');
+                        window.TOC.Virtual.C1.scan(getSession());
+                        ui.createTOC(true);
+                    } else {
+                        // Small chat or bars not yet rendered — try C6
+                        const added = window.TOC.Virtual.C6.scanCurrent(activeAdapter.platformKey, getSession());
+                        if (added > 0) ui.createTOC(true);
+                    }
+                }
+            };
+            // Retry after 800ms if store still empty (SPA mount delay)
+            setTimeout(ensureStorePopulated, 800);
+            setTimeout(ensureStorePopulated, 2000);
+
+            // Safety net: periodic check every 15s (keep old behavior)
+            setInterval(() => {
+                if (!document.hidden) {
+                    const store = window.TOC.StoreManager.getStore();
+                    const bars = document.querySelectorAll('[data-toc-item-index]').length;
+                    const domCount = document.querySelectorAll(activeAdapter.selectors.userMessage).length;
+                    // If TOC missing but should exist, or store empty but DOM has messages
+                    const tocExists = !!document.getElementById('toc-extension');
+                    if ((!tocExists && domCount > 0) || (store.size() === 0 && domCount > 0)) {
+                        console.log('[TOC Router] Safety net: TOC missing or store empty, rebuilding');
+                        ensureStorePopulated();
+                    }
+                }
+            }, 15000);
+
+            // Chat switching: re-init Virtual on URL change
+            // destroy() invalidates the nav generation + cancels pending C6/C7/saves;
+            // init() then hydrates the new chat's cache before C1/C6.
+            if (window.TOC.ConversationIdentity) {
+                window.TOC.ConversationIdentity.onUrlChange((newId, newUrl) => {
+                    console.log(`[TOC Router] URL changed to ${newUrl}, re-initializing`);
+                    // Reset store already done by StoreManager, now re-init Virtual
+                    setTimeout(() => {
+                        window.TOC.Virtual.destroy();
+                        let reinitDone = false;
+                        const p = window.TOC.Virtual.init(activeAdapter.platformKey, () => ui.createTOC(true));
+                        if (p && typeof p.then === 'function') {
+                            p.then(() => { reinitDone = true; }).catch((e) => { reinitDone = true; console.debug('[TOC Router] re-init failed', e); });
+                        } else {
+                            reinitDone = true;
+                        }
+                        // Also ensure C1 runs for new chat (slow SPA mount fallback,
+                        // gated on re-init so cached titles render first)
+                        setTimeout(() => {
+                            if (!reinitDone) return;
+                            const store = window.TOC.StoreManager.getStore();
+                            if (store.size() === 0) {
+                                let s = null;
+                                try {
+                                    if (window.TOC.Virtual._captureSession) s = window.TOC.Virtual._captureSession();
+                                } catch (e) { /* ignore */ }
+                                window.TOC.Virtual.C1.scan(s);
+                                ui.createTOC(true);
+                            }
+                        }, 500);
+                    }, 300);
+                });
+            }
+        }
     }
 })();

@@ -1,55 +1,69 @@
 {
-    "manifest_version": 3,
-    "name": "AI Chat TOC",
-    "version": "1.8.0",
-    "description": "Adds a Table of Contents to ChatGPT, Gemini, Perplexity, Claude, and Grok",
-    "icons": {
-        "48": "icons/icon48.png",
-        "128": "icons/icon128.png"
+  "manifest_version": 3,
+  "name": "AI Chat TOC",
+  "version": "1.9.0",
+  "description": "Adds a Table of Contents to ChatGPT, Gemini, Perplexity, Claude, and Grok",
+  "icons": {
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "toggle-toc": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F",
+        "mac": "MacCtrl+Shift+F"
+      },
+      "description": "Toggle Table of Contents"
     },
-    "permissions": [
-        "storage"
-    ],
-    "background": {
-        "service_worker": "background.js"
-    },
-    "commands": {
-        "toggle-toc": {
-            "suggested_key": {
-                "default": "Ctrl+Shift+F",
-                "mac": "MacCtrl+Shift+F"
-            },
-            "description": "Toggle Table of Contents"
-        }
-    },
-    "action": {
-        "default_popup": "popup.html"
-    },
-    "host_permissions": [
+    "toggle-compact-mode": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Alt+Shift+C"
+      },
+      "description": "Toggle Compact Navigation Mode"
+    }
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "host_permissions": [
+    "*://chatgpt.com/*",
+    "*://gemini.google.com/*",
+    "*://www.perplexity.ai/*",
+    "*://claude.ai/*",
+    "*://grok.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
         "*://chatgpt.com/*",
         "*://gemini.google.com/*",
         "*://www.perplexity.ai/*",
         "*://claude.ai/*",
         "*://grok.com/*"
-    ],
-    "content_scripts": [
-        {
-            "matches": [
-                "*://chatgpt.com/*",
-                "*://gemini.google.com/*",
-                "*://www.perplexity.ai/*",
-                "*://claude.ai/*",
-                "*://grok.com/*"
-            ],
-            "js": [
-                "themes.js",
-                "ui.js",
-                "main.js"
-            ],
-            "css": [
-                "style.css"
-            ],
-            "run_at": "document_idle"
-        }
-    ]
+      ],
+      "js": [
+        "themes.js",
+        "storage.js",
+        "store.js",
+        "virtual.js",
+        "ui.js",
+        "main.js",
+        "test/metrics.js",
+        "test/reporter.js",
+        "test/strategies/c1-prompt-bars.js",
+        "test/strategies/c3-backend-api.js",
+        "test/strategies/c4-fiber-nav.js",
+        "test/strategies/c6-dom-store.js",
+        "test/strategies/c7-scroll-scan.js",
+        "test/test-harness.js"
+      ],
+      "css": ["style.css"],
+      "run_at": "document_idle"
+    }
+  ]
 }

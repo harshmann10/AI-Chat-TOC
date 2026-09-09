@@ -90,7 +90,29 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: all var(--toc-transition-slow);
+    transition: background var(--toc-transition-slow),
+        border-color var(--toc-transition-slow),
+        box-shadow var(--toc-transition-slow),
+        color var(--toc-transition-slow);
+}
+
+/* Settings Update Accent Glow / Feedback Animation */
+@keyframes tocSettingUpdatedGlow {
+    0% {
+        box-shadow: var(--toc-shadow-xl), 0 0 0 0 var(--toc-accent);
+    }
+
+    35% {
+        box-shadow: var(--toc-shadow-xl), 0 0 0 4px var(--toc-accent-light), 0 0 16px var(--toc-accent);
+    }
+
+    100% {
+        box-shadow: var(--toc-shadow-xl), 0 0 0 0 transparent;
+    }
+}
+
+#toc-extension.toc-setting-updated {
+    animation: tocSettingUpdatedGlow 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* =================================================================== */
@@ -654,7 +676,7 @@
 /* =================================================================== */
 
 /* Dark Mode Support (Class-based) */
-#toc-extension.toc-dark {
+.toc-dark {
     --toc-bg-primary: rgba(30, 30, 35, 0.95);
     --toc-bg-secondary: rgba(40, 40, 48, 0.9);
     --toc-bg-tertiary: rgba(55, 55, 65, 0.9);
@@ -667,11 +689,11 @@
     --toc-shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
 
-#toc-extension.toc-dark .toc-question-row:hover a::before {
+.toc-dark .toc-question-row:hover a::before {
     color: #1a1a2e;
 }
 
-#toc-extension.toc-dark .toc-answer-row:hover .toc-answer-badge::before {
+.toc-dark .toc-answer-row:hover .toc-answer-badge::before {
     background-color: #1a1a2e;
 }
 
@@ -762,7 +784,7 @@
     display: none;
 }
 
-#toc-refresh-btn {
+#toc-scan-btn {
     width: var(--toc-button-size);
     height: var(--toc-button-size);
     display: flex;
@@ -776,7 +798,7 @@
     transition: all var(--toc-transition-fast);
 }
 
-#toc-refresh-btn::before {
+#toc-scan-btn::before {
     content: "";
     width: 14px;
     height: 14px;
@@ -786,17 +808,40 @@
     transition: background-color var(--toc-transition-fast);
 }
 
-#toc-refresh-btn:hover {
+#toc-scan-btn:hover {
     background: var(--toc-bg-hover);
     border-color: var(--toc-accent);
 }
 
-#toc-refresh-btn:hover::before {
+#toc-scan-btn:hover::before {
     background-color: var(--toc-accent);
 }
 
-#toc-extension.collapsed #toc-refresh-btn {
+#toc-scan-btn.scanning {
+    opacity: 0.6;
+    cursor: pointer;
+    animation: toc-scan-pulse 1s ease-in-out infinite;
+}
+
+@keyframes toc-scan-pulse {
+
+    0%,
+    100% {
+        opacity: 0.6;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+#toc-extension.collapsed #toc-scan-btn {
     display: none;
+}
+
+/* Legacy alias for backward compat */
+#toc-refresh-btn {
+    display: none !important;
 }
 
 #toc-extension.collapsed .toc-header-buttons {
@@ -974,4 +1019,216 @@
 
 #toc-extension.collapsed .toc-resize-handle {
     display: none;
+}
+
+/* =================================================================== */
+/* Compact Mode                                                        */
+/* =================================================================== */
+
+#toc-extension.compact-mode ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px;
+    align-content: flex-start;
+}
+
+#toc-extension.compact-mode li {
+    width: auto;
+    flex: 0 0 auto;
+    border-left: none;
+    margin: 0;
+    padding: 0;
+}
+
+#toc-extension.compact-mode li:hover {
+    border-left-color: transparent;
+}
+
+#toc-extension.compact-mode li a {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 34px;
+    height: 34px;
+    padding: 0 8px;
+    border-radius: var(--toc-radius-md);
+    background: var(--toc-bg-secondary);
+    border: 1px solid var(--toc-border-secondary);
+    font-weight: var(--toc-font-weight-medium);
+    transition: all var(--toc-transition-fast);
+    position: relative;
+}
+
+#toc-extension.compact-mode li a:hover {
+    background: var(--toc-accent);
+    color: white;
+    border-color: var(--toc-accent);
+    box-shadow: var(--toc-shadow-md);
+    transform: translateY(-1px);
+}
+
+#toc-extension.compact-mode li a::before {
+    margin: 0;
+    width: auto;
+    height: auto;
+    background: transparent;
+    color: inherit;
+    font-size: var(--toc-font-size-sm);
+    font-weight: 600;
+}
+
+#toc-extension.compact-mode li a:hover::before {
+    background: transparent;
+    color: white;
+}
+
+/* Hide standard components in compact mode */
+#toc-extension.compact-mode li a .toc-question-text,
+#toc-extension.compact-mode li .toc-copy-btn,
+#toc-extension.compact-mode li .toc-answer-row {
+    display: none !important;
+}
+
+/* Q&A Accent dot glyph indicator inside the badge badge */
+#toc-extension.compact-mode li[data-answer] a::after {
+    content: "•";
+    position: absolute;
+    top: 2px;
+    right: 5px;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--toc-accent);
+    transition: color var(--toc-transition-fast);
+}
+
+#toc-extension.compact-mode li[data-answer]:hover a::after {
+    color: #ffffff;
+}
+
+/* =================================================================== */
+/* Fixed Body-Level Popover Preview                                     */
+/* =================================================================== */
+
+#toc-compact-popover {
+    position: fixed;
+    z-index: 10005;
+    background: var(--toc-bg-primary);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--toc-border-secondary);
+    border-radius: var(--toc-radius-lg);
+    box-shadow: var(--toc-shadow-xl);
+    padding: var(--toc-spacing-lg);
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.96);
+    transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    max-height: 60vh;
+    max-width: 380px;
+    overflow-y: auto;
+}
+
+#toc-compact-popover.show {
+    opacity: 1;
+    pointer-events: auto;
+    transform: scale(1);
+}
+
+#toc-compact-popover.toc-dark {
+    background: var(--toc-bg-secondary);
+    border-color: var(--toc-border-secondary);
+}
+
+/* Popover Content Styling */
+.toc-popover-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--toc-spacing-sm);
+    gap: var(--toc-spacing-md);
+}
+
+.toc-popover-badge {
+    background: var(--toc-accent-light);
+    color: var(--toc-accent);
+    font-weight: 700;
+    font-size: var(--toc-font-size-xs);
+    padding: 2px 8px;
+    border-radius: var(--toc-radius-sm);
+    display: inline-block;
+}
+
+.toc-popover-copy-row {
+    display: flex;
+    gap: var(--toc-spacing-xs);
+}
+
+.toc-popover-copy-row button {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--toc-border-secondary);
+    border-radius: var(--toc-radius-sm);
+    cursor: pointer;
+    transition: all var(--toc-transition-fast);
+}
+
+.toc-popover-copy-row button:hover {
+    background: var(--toc-bg-hover);
+    border-color: var(--toc-accent);
+}
+
+.toc-popover-copy-row button svg {
+    stroke: var(--toc-text-secondary);
+    transition: stroke var(--toc-transition-fast);
+}
+
+.toc-popover-copy-row button:hover svg {
+    stroke: var(--toc-accent);
+}
+
+.toc-popover-question {
+    font-size: var(--toc-font-size-sm);
+    color: var(--toc-text-primary);
+    font-weight: 600;
+    line-height: var(--toc-line-height);
+    margin: 0;
+    word-break: break-word;
+}
+
+.toc-popover-divider {
+    height: 1px;
+    background: var(--toc-border-secondary);
+    margin: var(--toc-spacing-md) 0;
+}
+
+.toc-popover-answer-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--toc-spacing-xs);
+}
+
+.toc-popover-answer-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: var(--toc-font-size-xs);
+    font-weight: 700;
+    color: var(--toc-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.toc-popover-answer-body {
+    font-size: var(--toc-font-size-xs);
+    color: var(--toc-text-secondary);
+    line-height: var(--toc-line-height);
+    margin: 0;
+    word-break: break-word;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
 }
