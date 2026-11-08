@@ -3,28 +3,28 @@ name: Release Extension
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release Tag (e.g. v1.9.1). Leave empty to use version in chrome_manifest.json.'
+        description: "Release Tag (e.g. v1.9.1). Leave empty to use version in chrome_manifest.json."
         required: false
-        default: ''
+        default: ""
       release_title:
         description: 'Release Title (e.g. v1.9.1: UI Polish & Export Menu). Leave empty for "Release <tag>".'
         required: false
-        default: ''
+        default: ""
       release_notes:
-        description: 'Custom Release Notes / Description (Markdown). Leave empty to auto-generate from commits.'
+        description: "Custom Release Notes / Description (Markdown). Leave empty to auto-generate from commits."
         required: false
-        default: ''
+        default: ""
       draft:
-        description: 'Create as a draft release (allows you to review before publishing)'
+        description: "Create as a draft release (allows you to review before publishing)"
         required: false
         type: boolean
         default: false
       prerelease:
-        description: 'Mark as a pre-release'
+        description: "Mark as a pre-release"
         required: false
         type: boolean
         default: false
@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           # Required: without this the tagged ref is fetched WITHOUT the annotated
@@ -48,9 +48,9 @@ jobs:
           fetch-tags: true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: "24"
 
       - name: Verify JavaScript syntax
         run: |
@@ -148,7 +148,7 @@ jobs:
           if ($firefoxSize -lt 1000) { throw "firefox.zip is suspiciously small ($firefoxSize bytes)" }
 
       - name: Create GitHub Release & Upload Assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release_info.outputs.tag }}
           name: ${{ steps.release_info.outputs.title }}

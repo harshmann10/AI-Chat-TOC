@@ -218,56 +218,19 @@
 }
 
 /* =================================================================== */
-/* Update Signals (count delta / unseen badge / screen-reader region)   */
+/* Update Signals (unseen notification dot / screen-reader region)     */
 /* =================================================================== */
 
-/* Transient "+N" chip in the footer. Absolutely positioned (the footer is the
-   positioning context) so the centred query count never shifts when it appears. */
-.toc-count-delta {
-    position: absolute;
-    right: var(--toc-spacing-lg);
-    top: 50%;
-    padding: 1px 7px;
-    border-radius: var(--toc-radius-full);
-    background: var(--toc-accent);
-    color: #fff;
-    font-size: var(--toc-font-size-xs);
-    font-weight: var(--toc-font-weight-semibold);
-    line-height: 1.6;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateY(-50%) translateY(3px);
-    transition: opacity 200ms ease, visibility 200ms ease,
-        transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.toc-count-delta.show {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(-50%);
-}
-
-/* Unseen-count badge for the collapsed pill. Inset rather than hanging off a
-   corner because #toc-extension clips its children with overflow:hidden.
-   Bottom-right specifically: the hamburger's last stroke is the short one
-   (M4 18h10), so that corner is the only one the glyph does not occupy. */
+/* Unread notification dot for the collapsed pill button */
 .toc-pill-badge {
     position: absolute;
-    bottom: 3px;
-    right: 3px;
-    min-width: 15px;
-    height: 15px;
-    padding: 0 4px;
-    box-sizing: border-box;
+    top: 7px;
+    right: 7px;
+    width: 8px;
+    height: 8px;
     border-radius: var(--toc-radius-full);
     background: var(--toc-accent);
-    color: #fff;
-    font-family: var(--toc-font-family);
-    font-size: 10px;
-    font-weight: var(--toc-font-weight-semibold);
-    line-height: 15px;
-    text-align: center;
+    box-shadow: 0 0 0 2px var(--toc-bg-primary);
     display: none;
     z-index: 3;
     pointer-events: none;

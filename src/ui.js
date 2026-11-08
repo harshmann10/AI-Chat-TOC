@@ -849,66 +849,39 @@ window.TOC.UI = class UI {
     }
 
     /**
-     * Signals that `count` items were added to the list. Each part carries
-     * something the others do not:
-     * - row entrance: WHICH rows are new (only those animate)
-     * - delta chip:   HOW MANY were added
-     * - pill badge:   survives being collapsed or not looking at the tab
-     * - live region:  the same facts, for screen readers
+     * Signals that items were added to the list:
+     * - row entrance: newly appended rows animate in (handled in caller)
+     * - collapsed pill: lights up an unread indicator dot while minimized
+     * - live region: announces new content for screen readers
      */
     signalAddedItems(toc, count) {
-        this.showCountDelta(toc, count);
-        this.addUnseen(toc, count);
+        this.addUnseen(toc);
         this.announce(`${count} new item${count === 1 ? "" : "s"} added to the table of contents`);
-        // Collapsed: the badge is the only visible part, so draw the eye to the pill.
+        // Collapsed: the dot is the only visible indicator, so draw the eye to the pill.
         if (toc.classList.contains(window.TOC.CONSTANTS.CLASSES.COLLAPSED)) {
             this.pulseContainer(toc);
         }
     }
 
-    showCountDelta(toc, count) {
-        const CONSTANTS = window.TOC.CONSTANTS;
-        const chip = toc.querySelector(".toc-count-delta");
-        if (!chip) return;
-
-        chip.textContent = `+${count}`;
-        chip.classList.remove(CONSTANTS.CLASSES.SHOWN);
-        requestAnimationFrame(() => {
-            chip.classList.add(CONSTANTS.CLASSES.SHOWN);
-        });
-
-        if (this._deltaTimer) clearTimeout(this._deltaTimer);
-        this._deltaTimer = setTimeout(() => {
-            try { chip.classList.remove(CONSTANTS.CLASSES.SHOWN); } catch (e) { /* ignore */ }
-        }, CONSTANTS.REFRESH.DELTA_HOLD_MS);
-    }
-
     /**
-     * Accumulates additions on the collapsed pill. Only meaningful while collapsed:
-     * when expanded the user is looking straight at the list, so nothing is unseen.
+     * Activates the unread notification dot on the collapsed pill.
+     * Only meaningful while collapsed: when expanded the user is looking
+     * straight at the list, so nothing is unseen.
      */
-    addUnseen(toc, count) {
+    addUnseen(toc) {
         const CONSTANTS = window.TOC.CONSTANTS;
         if (!toc.classList.contains(CONSTANTS.CLASSES.COLLAPSED)) {
             this.clearUnseen();
             return;
         }
-        const badge = toc.querySelector(".toc-pill-badge");
-        if (!badge) return;
-
-        this._unseenCount = (this._unseenCount || 0) + count;
-        badge.textContent = this._unseenCount > 99 ? "99+" : String(this._unseenCount);
         toc.classList.add(CONSTANTS.CLASSES.UNSEEN);
     }
 
     clearUnseen() {
         const CONSTANTS = window.TOC.CONSTANTS;
-        this._unseenCount = 0;
         const toc = document.getElementById(CONSTANTS.IDS.TOC_CONTAINER);
         if (!toc) return;
         toc.classList.remove(CONSTANTS.CLASSES.UNSEEN);
-        const badge = toc.querySelector(".toc-pill-badge");
-        if (badge) badge.textContent = "";
     }
 
     /** Accent ring pulse — "look over here". */
@@ -1505,22 +1478,15 @@ window.TOC.UI = class UI {
         const tocCount = document.createElement("span");
         tocCount.className = "toc-count";
         tocCount.textContent = `${questions.length} queries`;
-        // Transient "+N" chip. Positioned absolutely so the centred count never
-        // shifts sideways when it appears.
-        const tocDelta = document.createElement("span");
-        tocDelta.className = "toc-count-delta";
-        tocDelta.setAttribute("aria-hidden", "true");
         tocFooter.appendChild(tocCount);
-        tocFooter.appendChild(tocDelta);
 
         tocContainer.appendChild(tocHeader);
         tocContainer.appendChild(searchContainer);
         tocContainer.appendChild(tocList);
         tocContainer.appendChild(tocFooter);
 
-        // Unseen-count badge for the collapsed pill. A direct child (not inside the
-        // header, which fades out when collapsed) and inset rather than hanging off
-        // a corner, because #toc-extension clips with overflow:hidden.
+        // Unread notification dot for the collapsed pill. A direct child (not inside the
+        // header, which fades out when collapsed)
         const pillBadge = document.createElement("span");
         pillBadge.className = "toc-pill-badge";
         pillBadge.setAttribute("aria-hidden", "true");

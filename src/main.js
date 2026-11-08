@@ -845,6 +845,9 @@ const SITES = {
                         }
                         const countEl = tocEl && tocEl.querySelector(".toc-count");
                         if (countEl) countEl.textContent = "";
+                        if (ui && typeof ui.clearUnseen === "function") {
+                            ui.clearUnseen();
+                        }
                     } catch (e) { /* never block re-init */ }
                     // Reset store already done by StoreManager, now re-init Virtual
                     setTimeout(() => {
