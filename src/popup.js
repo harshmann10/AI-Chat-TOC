@@ -212,23 +212,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // ── Experimental API toggle (v1.9.0) ───────────────────────────
-    const experimentalApiToggle = document.getElementById('toggle-experimental-api');
-
-    function refreshExperimentalApiUI() {
-        if (experimentalApiToggle) {
-            experimentalApiToggle.checked = !!settings.experimentalAPI;
-        }
-    }
-
-    if (experimentalApiToggle) {
-        experimentalApiToggle.addEventListener('change', () => {
-            settings.experimentalAPI = experimentalApiToggle.checked;
-            saveKey('experimentalAPI', settings.experimentalAPI);
-        });
-    }
-
     // ── Cache toggle (v1.9.0) ───────────────────────────────────
+    // (The v1.9.0 "Conversation API" toggle was removed in v1.9.3 — the API
+    // became load-bearing for navigation and is now always on.)
     const cacheEnabledToggle = document.getElementById('toggle-cache-enabled');
 
     function refreshCacheEnabledUI() {
@@ -390,7 +376,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         refreshModeUI();
         refreshShowAnswersUI();
         refreshCompactModeUI();
-        refreshExperimentalApiUI();
         refreshCacheEnabledUI();
         refreshCacheStats();
         renderPlatforms();
@@ -410,7 +395,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshModeUI();
     refreshShowAnswersUI();
     refreshCompactModeUI();
-    refreshExperimentalApiUI();
     refreshCacheEnabledUI();
     renderPlatforms();
     refreshCacheStats();

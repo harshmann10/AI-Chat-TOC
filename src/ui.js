@@ -763,6 +763,7 @@ window.TOC.UI = class UI {
         this.lastCreateTime = 0; // Prevent rapid creates
         this.isNavigating = false;
         this._navTimer = null;
+        this._navSessionId = 0;
         this._started = false;
 
         window.TOC.uiInstance = this;
@@ -1366,9 +1367,21 @@ window.TOC.UI = class UI {
 
             if (link) {
                 e.preventDefault();
+                const activeItem = link.closest("li");
+                // Re-clicking the currently navigating item cancels navigation
+                if (activeItem && activeItem.classList.contains("toc-navigating")) {
+                    if (window.TOC && window.TOC.Virtual && window.TOC.Virtual.Navigator && typeof window.TOC.Virtual.Navigator.cancelJump === 'function') {
+                        window.TOC.Virtual.Navigator.cancelJump();
+                    }
+                    return;
+                }
+
                 this.isNavigating = true;
                 if (this._navTimer) clearTimeout(this._navTimer);
-                this._navTimer = setTimeout(() => { this.isNavigating = false; }, 800);
+
+                const navSession = ++this._navSessionId;
+                if (activeItem) activeItem.classList.add("toc-navigating");
+
                 // Preserve TOC list scroll: navigation scrolls chat -> C6 observer may
                 // rebuild TOC -> recreated ul would reset to top. Capture + restore.
                 const tocListEl = tocList;
@@ -1379,47 +1392,73 @@ window.TOC.UI = class UI {
                         if (cur && savedListScroll > 0) cur.scrollTop = savedListScroll;
                     } catch (err) { /* ignore */ }
                 };
-                const storeId = link.getAttribute("data-store-id");
-                // Non-ChatGPT platforms: direct DOM navigation (persistent cache
-                // and Virtual.Navigator are ChatGPT-only). Never call the
-                // offset-based navigator here — its container/offsetTop guess
-                // can scroll nowhere and mask the DOM fallback via `ok=true`.
-                if (this.config.platformKey !== 'chatgpt') {
-                    const questionId = link.getAttribute("href").substring(1);
-                    const targetElement = document.getElementById(questionId);
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }
-                    restoreListScroll();
-                    return;
-                }
-                if (storeId && window.TOC && window.TOC.Virtual) {
-                    let ok = await window.TOC.Virtual.Navigator.navigateTo(storeId, this.config.platformKey);
-                    // (Prompt-bar click fallback removed in v1.9.2 — ChatGPT deleted
-                    // its prompt-navigation UI entirely, so there is no bar to click.)
-                    if (!ok) {
+
+                try {
+                    const storeId = link.getAttribute("data-store-id");
+                    // Non-ChatGPT platforms: direct DOM navigation (persistent cache
+                    // and Virtual.Navigator are ChatGPT-only). Never call the
+                    // offset-based navigator here — its container/offsetTop guess
+                    // can scroll nowhere and mask the DOM fallback via `ok=true`.
+                    if (this.config.platformKey !== 'chatgpt') {
                         const questionId = link.getAttribute("href").substring(1);
                         const targetElement = document.getElementById(questionId);
                         if (targetElement) {
                             targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
-                            ok = true;
                         }
+                        restoreListScroll();
+                        return;
                     }
-                    if (!ok) this.showToast("Message not in view");
-                    restoreListScroll();
-                } else {
-                    const questionId = link.getAttribute("href").substring(1);
-                    const targetElement = document.getElementById(questionId);
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                    if (storeId && window.TOC && window.TOC.Virtual) {
+                        let ok = await window.TOC.Virtual.Navigator.navigateTo(storeId, this.config.platformKey);
+                        // (Prompt-bar click fallback removed in v1.9.2 — ChatGPT deleted
+                        // its prompt-navigation UI entirely, so there is no bar to click.)
+                        if (!ok) {
+                            const questionId = link.getAttribute("href").substring(1);
+                            const targetElement = document.getElementById(questionId);
+                            if (targetElement) {
+                                targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                                ok = true;
+                            }
+                        }
+                        const abortReason = window.TOC.Virtual.Navigator && window.TOC.Virtual.Navigator.lastAbortReason;
+                        const wasUserCancel = abortReason === 'user-scroll' || abortReason === 'user-cancel';
+                        if (!ok && !wasUserCancel) {
+                            this.showToast("Message not in view");
+                        } else if (abortReason === 'user-cancel') {
+                            this.showToast("Navigation cancelled");
+                        }
+                        restoreListScroll();
+                    } else {
+                        const questionId = link.getAttribute("href").substring(1);
+                        const targetElement = document.getElementById(questionId);
+                        if (targetElement) {
+                            targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }
+                        restoreListScroll();
                     }
-                    restoreListScroll();
+                } finally {
+                    if (activeItem) activeItem.classList.remove("toc-navigating");
+                    if (this._navSessionId === navSession) {
+                        this.isNavigating = false;
+                    }
                 }
             } else if (answerNav && !e.target.closest(".toc-answer-copy")) {
                 e.preventDefault();
+                const activeItem = answerNav.closest(".toc-answer-row") || answerNav;
+                // Re-clicking the currently navigating item cancels navigation
+                if (activeItem && activeItem.classList.contains("toc-navigating")) {
+                    if (window.TOC && window.TOC.Virtual && window.TOC.Virtual.Navigator && typeof window.TOC.Virtual.Navigator.cancelJump === 'function') {
+                        window.TOC.Virtual.Navigator.cancelJump();
+                    }
+                    return;
+                }
+
                 this.isNavigating = true;
                 if (this._navTimer) clearTimeout(this._navTimer);
-                this._navTimer = setTimeout(() => { this.isNavigating = false; }, 800);
+
+                const navSession = ++this._navSessionId;
+                if (activeItem) activeItem.classList.add("toc-navigating");
+
                 const savedAnswerScroll = tocList ? tocList.scrollTop : 0;
                 const restoreAnswerScroll = () => {
                     try {
@@ -1427,35 +1466,49 @@ window.TOC.UI = class UI {
                         if (cur && savedAnswerScroll > 0) cur.scrollTop = savedAnswerScroll;
                     } catch (err) { /* ignore */ }
                 };
-                const storeId = answerNav.getAttribute("data-store-id") || answerNav.getAttribute("data-nav-id");
-                // Non-ChatGPT platforms: direct DOM navigation to the answer
-                // element ID (see question handler above for rationale).
-                if (this.config.platformKey !== 'chatgpt') {
-                    const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }
-                    restoreAnswerScroll();
-                    return;
-                }
-                if (storeId && window.TOC && window.TOC.Virtual) {
-                    // Try storeId first, fallback to element id
-                    let ok = await window.TOC.Virtual.Navigator.navigateTo(storeId, this.config.platformKey);
-                    if (!ok) {
+
+                try {
+                    const storeId = answerNav.getAttribute("data-store-id") || answerNav.getAttribute("data-nav-id");
+                    // Non-ChatGPT platforms: direct DOM navigation to the answer
+                    // element ID (see question handler above for rationale).
+                    if (this.config.platformKey !== 'chatgpt') {
                         const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
                         if (targetElement) {
                             targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
-                            ok = true;
                         }
+                        restoreAnswerScroll();
+                        return;
                     }
-                    if (!ok) this.showToast("Message not in view");
-                    restoreAnswerScroll();
-                } else {
-                    const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                    if (storeId && window.TOC && window.TOC.Virtual) {
+                        // Try storeId first, fallback to element id
+                        let ok = await window.TOC.Virtual.Navigator.navigateTo(storeId, this.config.platformKey);
+                        if (!ok) {
+                            const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
+                            if (targetElement) {
+                                targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                                ok = true;
+                            }
+                        }
+                        const abortReason = window.TOC.Virtual.Navigator && window.TOC.Virtual.Navigator.lastAbortReason;
+                        const wasUserCancel = abortReason === 'user-scroll' || abortReason === 'user-cancel';
+                        if (!ok && !wasUserCancel) {
+                            this.showToast("Message not in view");
+                        } else if (abortReason === 'user-cancel') {
+                            this.showToast("Navigation cancelled");
+                        }
+                        restoreAnswerScroll();
+                    } else {
+                        const targetElement = document.getElementById(answerNav.getAttribute("data-nav-id"));
+                        if (targetElement) {
+                            targetElement.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }
+                        restoreAnswerScroll();
                     }
-                    restoreAnswerScroll();
+                } finally {
+                    if (activeItem) activeItem.classList.remove("toc-navigating");
+                    if (this._navSessionId === navSession) {
+                        this.isNavigating = false;
+                    }
                 }
             } else if (qCopy) {
                 e.preventDefault();
@@ -2143,19 +2196,26 @@ window.TOC.UI = class UI {
             this.createTOC(true);
             return;
         }
-        // Fix: If stuck, force reset
+        const tocContainer = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
+        const countEl = tocContainer ? tocContainer.querySelector('.toc-count') : null;
+
+        // If currently scanning, re-clicking stops the scan immediately
         if (btn.classList.contains('scanning')) {
-            if (window.TOC.Virtual.C7.forceReset) window.TOC.Virtual.C7.forceReset();
+            if (window.TOC.Virtual.C7.abort) window.TOC.Virtual.C7.abort();
+            else if (window.TOC.Virtual.C7.forceReset) window.TOC.Virtual.C7.forceReset();
             btn.classList.remove('scanning');
             btn.title = 'Scan full chat';
+            if (countEl && this._scanOriginalCount) {
+                countEl.textContent = this._scanOriginalCount;
+            }
+            this.showToast('Scan stopped');
             return;
         }
         btn.classList.add('scanning');
-        btn.title = 'Scanning...';
+        btn.title = 'Scanning... (click to stop)';
         const originalTitle = 'Scan full chat';
-        const tocContainer = document.getElementById(window.TOC.CONSTANTS.IDS.TOC_CONTAINER);
-        const countEl = tocContainer ? tocContainer.querySelector('.toc-count') : null;
         const originalCount = countEl ? countEl.textContent : '';
+        this._scanOriginalCount = originalCount;
         // Fix: Count user only for toast (not user+assistant)
         const beforeUserCount = (() => {
             try {

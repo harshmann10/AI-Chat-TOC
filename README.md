@@ -52,7 +52,7 @@ AI Chat TOC natively adapts to each platform's design language, theme modes, and
 
 | Platform | Host URL | Accent Theme | Status |
 | :--- | :--- | :--- | :--- |
-| **ChatGPT** | `chatgpt.com` | Emerald (`#10a37f`) | ✅ Fully Supported (New Reverse-Scroll & Virtualized UI) |
+| **ChatGPT** | `chatgpt.com` | Emerald (`#10a37f`) | ✅ Fully Supported (Virtualized UI, lazy-loaded pages & layout-agnostic scrolling) |
 | **Claude** | `claude.ai` | Sunset (`#ea580c`) | ✅ Fully Supported |
 | **Gemini** | `gemini.google.com` | Sapphire (`#4285f4`) | ✅ Fully Supported |
 | **Perplexity** | `perplexity.ai` | Teal (`#20b2aa`) | ✅ Fully Supported |
@@ -64,8 +64,9 @@ AI Chat TOC natively adapts to each platform's design language, theme modes, and
 
 ### 1. 🧭 Interactive Outline & Precision Jump
 - **Complete Conversation Tree**: Lists all your prompts in an organized, numbered sequence.
-- **Precision Scroll Engine**: Overcomes ChatGPT's reverse-scroll flex model (`column-reverse` scroller) and DOM unmounting to land exactly on target messages without getting stuck.
-- **Visual Spotlight**: Briefly highlights the target message when clicked so your eyes locate it instantly.
+- **Precision Scroll Engine**: Overcomes ChatGPT's virtualized thread (layout-agnostic — handles both the classic and `column-reverse` scrollers) and its lazy-loaded older pages: distant jumps pin the top boundary, let ChatGPT paginate older messages in, and re-aim by exact API position until the target is mounted.
+- **Visual Feedback & Re-Click Cancel**: The clicked TOC row or compact badge pulses while navigating, and re-clicking it or scrolling immediately cancels navigation.
+- **Visual Spotlight**: Briefly highlights the target message when reached so your eyes locate it instantly.
 
 ---
 
@@ -77,7 +78,9 @@ AI Chat TOC natively adapts to each platform's design language, theme modes, and
 ---
 
 ### 3. ⚡ Virtualization Engine & API-First Outlines
-- **Dual-Source Hybrid Discovery**: Integrates ChatGPT's internal conversation API tree with live DOM observers to construct a 100% complete outline in ~3 seconds.
+- **Dual-Source Hybrid Discovery**: Integrates ChatGPT's internal conversation API tree with live DOM observers to construct a complete outline — always on, no setup required.
+- **Deep-Chat Navigation**: For very large chats, the jump engine triggers ChatGPT's own older-message pagination, waits for each page to materialize, and verifies the target before reporting success.
+- **On-Demand Scan & Instant Stop**: Scan the full thread on demand with instant feedback, and click the scan button again anytime to stop.
 - **Unread Notification Dot**: When the TOC is minimized to a corner pill, a clean indicator dot lights up when new messages arrive and clears automatically upon expanding or switching chats.
 - **Direction-Agnostic Scroller**: Normalized coordinate engine seamlessly navigates both classic scroll containers and modern reverse-scroll threads.
 

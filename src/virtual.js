@@ -920,6 +920,61 @@ window.TOC.Virtual = (function () {
                 await new Promise(r => setTimeout(r, 300));
                 if (scanGen !== myGen || scanAbort) return;
                 if (scanSession && !isCurrentSession(scanSession)) return;
+
+                // Materialize the lazy-loaded oldest pages first (2026-11-09):
+                // ChatGPT fetches older messages in ~10-turn pages only while
+                // the viewport dwells at the oldest boundary, so a plain 300 ms
+                // wait starts the scan above a wall of unmaterialized spacer
+                // (a 265-node chat had its oldest ~190 nodes unmounted). Pin,
+                // wait for prepends, re-pin, capture as pages arrive.
+                //
+                // FAST EXIT (v1.9.3): when C3 already stamped positions, the
+                // earliest mounted apiIndex tells us whether older pages can
+                // exist at all. `<= 1` ⇒ the true oldest message is mounted ⇒
+                // skip the dwell entirely — small/medium chats must not pay a
+                // ~5 s idle tax per scan.
+                const earliestMountedIndex = () => {
+                    try {
+                        const positions = mountedRecords(store)
+                            .map(r => (typeof r.domPosition === 'number') ? r.domPosition
+                                : (r.rec && typeof r.rec.apiIndex === 'number') ? r.rec.apiIndex : null)
+                            .filter(v => v !== null && v !== undefined);
+                        return positions.length ? Math.min(...positions) : null;
+                    } catch (e) { return null; }
+                };
+                const materializeAtOldest = async (maxHoldMs) => {
+                    const deadline = performance.now() + (maxHoldMs || 45000);
+                    let idleRounds = 0;
+                    while (!scanAbort && scanGen === myGen && performance.now() < deadline) {
+                        if (scanAbort || scanGen !== myGen) return;
+                        const earliest = earliestMountedIndex();
+                        if (earliest !== null && earliest <= 1) break; // true top already mounted
+                        if (S) S.setLogical(container, 0);
+                        else container.scrollTo({ top: 0, behavior: 'instant' });
+                        const h0 = container.scrollHeight;
+                        const sig0 = windowSignature();
+                        const roundDeadline = performance.now() + JUMP.holdPageMs;
+                        let grew = false;
+                        while (!scanAbort && scanGen === myGen && performance.now() < roundDeadline) {
+                            await nextFrame();
+                            await new Promise(r => setTimeout(r, 100));
+                            if (scanAbort || scanGen !== myGen) return;
+                            if (container.scrollHeight !== h0 || windowSignature() !== sig0) grew = true;
+                        }
+                        const pageAdded = C6.scanCurrent(siteKey, scanSession);
+                        totalFound += pageAdded;
+                        if (onProgress) onProgress({ step: steps, total: maxSteps, found: store.getUserMessages().length, scrollTop: 0 });
+                        if (!grew) {
+                            idleRounds++;
+                            if (idleRounds >= 2) break; // boundary refuses to move
+                        } else {
+                            idleRounds = 0;
+                        }
+                    }
+                };
+                await materializeAtOldest(45000);
+                if (scanGen !== myGen || scanAbort) return;
+                if (scanSession && !isCurrentSession(scanSession)) return;
                 let added = C6.scanCurrent(siteKey, scanSession);
                 totalFound += added;
                 if (onProgress) onProgress({ step: 0, total: maxSteps, found: store.getUserMessages().length });
@@ -1141,6 +1196,10 @@ window.TOC.Virtual = (function () {
     //   3. directional search — uses the MOUNTED window's api indices to pick the
     //                           direction, overshoots when the window is stuck,
     //                           refines with smaller steps late
+    //   3.5 pagination hold   — target OLDER than the materialized boundary:
+    //                           pin logical 0 and let ChatGPT lazy-load pages of
+    //                           ~10 turns (it only fetches while the viewport
+    //                           dwells at the boundary); re-pin as pages prepend
     //   4. verify             — by turn key / message id (never by offset guess)
     // Cancels the moment the user scrolls or types, so it never fights input.
     // -------------------------------------------------------------------------
@@ -1155,6 +1214,12 @@ window.TOC.Virtual = (function () {
         verifyMs: 1200,
         stepWaitMs: 260,
         deadlineMs: 12000, // hard wall-clock budget for one navigation
+        // Pagination hold (2026-11-09): ChatGPT lazy-loads older messages in
+        // pages of ~10 turns and only fetches them while the viewport dwells
+        // at the oldest materialized boundary. These bound that wait.
+        holdPageMs: 2500,  // per-pin wait for a page to materialize
+        holdMaxMs: 60000,  // hard cap (≈19 sequential pages observed live)
+        holdPollMs: 100,
     };
 
     /** Turn index embedded in the unit key: "fallback-turn-7:0:user" → 7. */
@@ -1245,7 +1310,7 @@ window.TOC.Virtual = (function () {
      * Resolve + scroll + flash. Returns true only when a mounted element was
      * verified — never when a scroll merely happened.
      */
-    const performVirtualJump = async (msg, container, store) => {
+    const performVirtualJump = async (msg, container, store, onProgress) => {
         const S = window.TOC.scroll;
         if (!S || !container || !msg) return false;
         const myToken = ++activeJumpToken;
@@ -1255,6 +1320,7 @@ window.TOC.Virtual = (function () {
         // from a real search failure.
         const abort = (why) => {
             console.warn(`[TOC Nav] Aborted (${why}) after ${(performance.now() - t0).toFixed(0)}ms`);
+            Navigator.lastAbortReason = why;
             return false;
         };
 
@@ -1330,7 +1396,14 @@ window.TOC.Virtual = (function () {
 
         const finish = (el) => {
             if (!el) return false;
-            try { S.scrollByElement(container, el, 'center'); } catch (e) { /* ignore */ }
+            try {
+                // A turn taller than ~1.5 viewports must align its START, not
+                // its center: a 25k-char message renders as a ~45k px turn and
+                // centering leaves its beginning 20k px above the viewport
+                // (live 2026-11-09) — the user sees the middle of the message.
+                const tall = el.getBoundingClientRect().height > container.clientHeight * 1.5;
+                S.scrollByElement(container, el, tall ? 'start' : 'center');
+            } catch (e) { /* ignore */ }
             flash(el);
             console.log(`[TOC Nav] Resolved ${msg.id} in ${(performance.now() - t0).toFixed(0)}ms`);
             return true;
@@ -1349,12 +1422,15 @@ window.TOC.Virtual = (function () {
             if (hasApi) {
                 const ratio = Math.min(1, Math.max(0, msg.apiIndex / (total - 1)));
                 console.log(`[TOC Nav] Ratio jump ${(ratio * 100).toFixed(1)}% (apiIndex ${msg.apiIndex}/${total})`);
+                if (typeof onProgress === 'function') {
+                    onProgress({ phase: 'ratio', text: 'Navigating to message...' });
+                }
                 S.setLogical(container, S.maxTop(container) * ratio);
                 el = await waitFor(msg, JUMP.verifyMs);
                 if (el) return finish(el);
             }
             if (cancelled) return abort('user-scroll');
-            if (!stillActive()) return abort('superseded');
+            if (!stillActive()) return abort(Navigator.lastAbortReason || 'superseded');
 
             // 3. Coarse jump from cached geometry (a previous scan).
             if (typeof msg.offsetTop === 'number' && msg.offsetTop > 0) {
@@ -1363,7 +1439,82 @@ window.TOC.Virtual = (function () {
                 if (el) return finish(el);
             }
             if (cancelled) return abort('user-scroll');
-            if (!stillActive()) return abort('superseded');
+            if (!stillActive()) return abort(Navigator.lastAbortReason || 'superseded');
+
+            // 3.5 Pagination hold — targets OLDER than the materialized boundary.
+            //
+            // ChatGPT lazy-loads older messages in pages of ~10 turns
+            // (GET /backend-api/conversations/<id>/messages?before=<uuid>) and
+            // fires those fetches ONLY while the viewport dwells at the oldest
+            // materialized boundary (live 2026-11-09: boundary at linear
+            // position ~191 of 265, target at 1). Sweeping near the boundary
+            // suppresses the dwell, the pages never load, and the search burns
+            // its budget oscillating — the reported "goes up, down somewhat
+            // and just stop".
+            //
+            // So: pin the viewport at the oldest end (logical 0 works on both
+            // layouts), wait for the virtualizer to prepend a page (its scroll
+            // anchoring moves scrollTop as content is inserted above), re-pin,
+            // and repeat until the target mounts or progress stops. Direction
+            // NEVER reverses while pinned.
+            const mountedRecs = mountedRecords(store);
+            const earliest = (() => {
+                const positions = mountedRecs
+                    .map(r => (typeof r.domPosition === 'number') ? r.domPosition
+                        : (r.rec && typeof r.rec.apiIndex === 'number') ? r.rec.apiIndex : null)
+                    .filter(v => v !== null && v !== undefined);
+                return positions.length ? Math.min(...positions) : null;
+            })();
+            const mountedOrds = mountedRecs.map(r => r.ordinal).filter(o => o >= 0);
+            const targetOrdinal = store.getAll().findIndex(m => m.id === msg.id);
+            const olderThanBoundary = (hasApi && earliest !== null && msg.apiIndex < earliest - 1)
+                || (!hasApi && mountedOrds.length > 0 && targetOrdinal >= 0 && targetOrdinal < Math.min(...mountedOrds));
+            if (olderThanBoundary) {
+                const pages = (hasApi && earliest !== null)
+                    ? Math.ceil((earliest - msg.apiIndex) / 10) + 1
+                    : null;
+                const budget = pages
+                    ? Math.min(JUMP.holdMaxMs, pages * JUMP.holdPageMs + 8000)
+                    : 45000;
+                const holdDeadline = performance.now() + budget;
+                console.log(`[TOC Nav] Pagination hold: target ${hasApi ? msg.apiIndex : '?'} is older than earliest mounted ${earliest} (≈${pages || '?'} pages, budget ${(budget / 1000).toFixed(0)}s)`);
+                let boundaryStuck = 0;
+                let pageLoaded = 0;
+                while (!cancelled && stillActive() && performance.now() < holdDeadline) {
+                    if (typeof onProgress === 'function') {
+                        const pageText = pages
+                            ? `Loading earlier messages (${Math.min(pages, pageLoaded + 1)}/${pages})...`
+                            : 'Loading earlier messages...';
+                        onProgress({ phase: 'hold', page: pageLoaded, totalPages: pages, text: pageText });
+                    }
+                    S.setLogical(container, 0);
+                    const h0 = container.scrollHeight;
+                    const sig0 = windowSignature();
+                    const roundDeadline = performance.now() + JUMP.holdPageMs;
+                    let grew = false;
+                    while (!cancelled && stillActive() && performance.now() < roundDeadline) {
+                        const found = findEl(msg);
+                        if (found) return finish(found);
+                        await new Promise(r => setTimeout(r, JUMP.holdPollMs));
+                        if (container.scrollHeight !== h0 || windowSignature() !== sig0) grew = true;
+                    }
+                    if (cancelled || !stillActive()) return abort(cancelled ? 'user-scroll' : (Navigator.lastAbortReason || 'superseded'));
+                    // One confirmation round with zero materialization ⇒ the
+                    // boundary refuses to move (give up back to the sweep).
+                    if (!grew) {
+                        boundaryStuck++;
+                        if (boundaryStuck >= 2) break;
+                    } else {
+                        boundaryStuck = 0;
+                        pageLoaded++;
+                    }
+                }
+                el = findEl(msg);
+                if (el) return finish(el);
+                console.warn('[TOC Nav] Pagination hold exhausted — falling back to sweep');
+            }
+            if (cancelled) return abort('user-scroll');
+            if (!stillActive()) return abort(Navigator.lastAbortReason || 'superseded');
 
             // 4. Directional search with window feedback.
             let lastSig = '';
@@ -1371,7 +1522,16 @@ window.TOC.Virtual = (function () {
             let momentum = -1; // no API signal → sweep older first
             for (let attempt = 1; attempt <= JUMP.maxAttempts; attempt++) {
                 if (cancelled) return abort('user-scroll');
-                if (!stillActive()) return abort('superseded');
+                if (!stillActive()) return abort(Navigator.lastAbortReason || 'superseded');
+
+                if (typeof onProgress === 'function' && attempt > 2) {
+                    onProgress({
+                        phase: 'sweep',
+                        attempt,
+                        maxAttempts: JUMP.maxAttempts,
+                        text: `Locating message (${attempt}/${JUMP.maxAttempts})...`
+                    });
+                }
 
                 const sig = windowSignature();
                 if (sig && sig === lastSig) stuck++;
@@ -1448,6 +1608,20 @@ window.TOC.Virtual = (function () {
                 // 15k → 27k mid-navigation) — setLogical() steps produced no net
                 // movement, which is why the search stalled at the same window.
                 let travelled = false;
+                // Far target with a known API position: re-pin at the target's
+                // RATIO of the CURRENT maxTop instead of crawling by viewports.
+                // In chats with giant turns (a 25k-char message rendered as a
+                // 46k px turn ≈ 25 viewports, live 2026-11-09) viewport-sized
+                // steps cannot cross the remaining distance inside the time
+                // budget; and the virtualizer keeps refining scrollHeight, so
+                // the ratio must be re-aimed with the CURRENT maxTop per round
+                // (the first ratio jump landed at 62% because maxTop grew after
+                // the pin). Each repin converges geometrically as heights settle.
+                if (hasApi && distance !== null && distance > 12) {
+                    const ratio = Math.min(1, Math.max(0, msg.apiIndex / (total - 1)));
+                    S.setLogical(container, S.maxTop(container) * ratio);
+                    travelled = true;
+                }
                 try {
                     const recsNow = mountedRecords(store).filter(r => typeof r.domPosition === 'number');
                     if (recsNow.length > 0) {
@@ -1510,7 +1684,14 @@ window.TOC.Virtual = (function () {
     // Navigator (Trap 2) — 2-step with adaptive wait
     // -------------------------------------------------------------------------
     const Navigator = {
-        async navigateTo(storeId, siteKey) {
+        lastAbortReason: null,
+        cancelJump() {
+            activeJumpToken++;
+            this.lastAbortReason = 'user-cancel';
+            console.log('[TOC Nav] Jump cancelled via cancelJump');
+        },
+        async navigateTo(storeId, siteKey, onProgress) {
+            this.lastAbortReason = null;
             const store = StoreManager.getStore();
             let msg = store.getById(storeId);
             // Fix: storeId may be fallback "toc-question-N" — try to resolve via promptBarIndex
@@ -1568,7 +1749,7 @@ window.TOC.Virtual = (function () {
                 const S = window.TOC.scroll;
                 const newUI = !!(S && document.querySelector(SELECTORS.chatgpt.turnContainerNew));
                 if (newUI) {
-                    const ok = await performVirtualJump(msg, container, store);
+                    const ok = await performVirtualJump(msg, container, store, onProgress);
                     if (!ok) console.warn(`[TOC Nav] (new UI) Message ${storeId} not reachable`);
                     return ok;
                 }
@@ -1735,48 +1916,17 @@ window.TOC.Virtual = (function () {
             }
         };
 
-        const getSetting = async () => {
-            try {
-                const adapter = safeAdapter();
-                if (adapter) {
-                    // v1.9.2: default TRUE — the API is the primary outline source on
-                    // the redesigned UI. Stored `false` is an explicit opt-out.
-                    const items = await adapter.get({ experimentalAPI: true });
-                    return { experimentalAPI: !!(items && items.experimentalAPI) };
-                }
-            } catch (e) { /* fall through */ }
-            return new Promise(resolve => {
-                try {
-                    const api = (typeof chrome !== 'undefined' && chrome.storage) ? chrome.storage.local
-                        : (typeof browser !== 'undefined' && browser.storage) ? browser.storage.local : null;
-                    if (!api) return resolve({ experimentalAPI: true });
-                    const maybePromise = api.get({ experimentalAPI: true });
-                    if (maybePromise && typeof maybePromise.then === 'function') {
-                        maybePromise.then(
-                            items => resolve({ experimentalAPI: !!(items && items.experimentalAPI) }),
-                            () => resolve({ experimentalAPI: true })
-                        );
-                        return;
-                    }
-                    api.get({ experimentalAPI: true }, items => resolve({ experimentalAPI: !!(items && items.experimentalAPI) }));
-                } catch (e) {
-                    resolve({ experimentalAPI: true });
-                }
-            });
-        };
-
-        // v1.9.2: API-first is the DEFAULT. The 2026-10 redesign removed the prompt
-        // bars, so the conversation API is the only complete, instant outline
-        // source; the toggle is now an opt-OUT (only an explicit `false` disables).
+        // v1.9.3: the API is ALWAYS on. Since the 2026-11 pagination fix, C3's
+        // apiIndex/apiTotal are load-bearing for navigation — the ratio jump
+        // and the pagination hold both read them — so a DOM-only outline would
+        // break distant-target jumps in large chats. The v1.9.0
+        // "Conversation API" toggle was removed from the popup; any stale
+        // stored `experimentalAPI: false` is deliberately IGNORED so pre-1.9.3
+        // opt-outs are migrated automatically instead of being stranded with a
+        // degraded TOC and no way to re-enable it.
         const isEnabled = async () => {
             if (Identity.isShared()) {
                 console.log('[TOC C3] Auto-enabled for /share/');
-                return true;
-            }
-            const { experimentalAPI } = await getSetting();
-            if (experimentalAPI === false) {
-                console.log('[TOC C3] Disabled by setting (experimentalAPI=false)');
-                return false;
             }
             return true;
         };
@@ -2358,31 +2508,10 @@ window.TOC.Virtual = (function () {
                 }, 1000);
             }
 
-            // Listen for storage changes to re-trigger C3 (ChatGPT pages only,
-            // so toggling the setting elsewhere can never fire a ChatGPT request)
-            try {
-                const storageApi = (typeof chrome !== 'undefined' && chrome.storage) ? chrome.storage
-                    : (typeof browser !== 'undefined' && browser.storage) ? browser.storage : null;
-                const api = storageApi || null;
-                if (api && api.onChanged && !api.onChanged.__tocVirtualPatched) {
-                    api.onChanged.__tocVirtualPatched = true;
-                    api.onChanged.addListener((changes, area) => {
-                        try {
-                            if (area === 'local' && changes.experimentalAPI) {
-                                try {
-                                    if (!location.host.includes('chatgpt.com')) return;
-                                } catch (e) { return; }
-                                console.log('[TOC Virtual] experimentalAPI changed, re-fetching C3');
-                                const current = {
-                                    convId: (Identity && Identity.getCurrentId()) || location.href,
-                                    navGen: currentNavGen,
-                                };
-                                C3.fetchAndMerge(current).then(c => { if (c > 0 && isCurrentSession(current) && onUpdate) onUpdate(); });
-                            }
-                        } catch (e) { /* ignore */ }
-                    });
-                }
-            } catch (e) { /* ignore */ }
+            // (v1.9.3) The storage-change hook for the old `experimentalAPI`
+            // toggle was removed with the setting itself. chrome.storage.local
+            // is shared with the persistent cache, so fewer listeners here also
+            // means fewer chances of reacting to cache writes.
         },
         destroy() {
             // Invalidate current generation + cancel pending C6/C7/saves

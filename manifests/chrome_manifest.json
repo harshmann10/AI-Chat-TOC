@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Chat TOC",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "Adds a Table of Contents to ChatGPT, Gemini, Perplexity, Claude, and Grok",
   "icons": {
     "48": "icons/icon48.png",

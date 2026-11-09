@@ -1,8 +1,8 @@
 # 🧪 AI Chat TOC — Findings & Handoff
 
-> **Last updated:** 2026-10-10
-> **Environment:** Windows · Microsoft Edge **154.0.4258.62** · ChatGPT redesigned conversation UI
-> **Extension under test:** AI Chat TOC **1.9.2** loaded unpacked from `dist/chrome_test` (Web Store copy **1.9.1** may also be installed — see §5 gotcha)
+> **Last updated:** 2026-11-10
+> **Environment:** Windows · Microsoft Edge · ChatGPT redesigned conversation UI
+> **Extension under test:** AI Chat TOC **1.9.3** loaded unpacked from `dist/chrome_test` (Web Store copy **1.9.1** may also be installed — see §5 gotcha)
 
 ---
 
@@ -48,7 +48,13 @@ Zero queries detected ⇒ `createTOC()` never ran.
 
 # 🔄 PART 2 — Reverse scrolling (THE critical discovery)
 
-The new thread container is `flex-direction: column-reverse`, so its **native `scrollTop` range is `[-maxTop, 0]`**.
+> **⚠️ 2026-11-09 update:** the thread scroller has since flipped back to **plain `column`**
+> (`flexDirection` measured live). The logical-axis helpers below handle both layouts via
+> `isReverse()` — nothing to change in callers — but do NOT assume a direction anywhere, and
+> re-measure before trusting any absolute-offset math. See §6 for the current lazy-pagination
+> findings, which are the bigger deal on today's UI.
+
+The new thread container is a `flex-direction: column-reverse`, so its **native `scrollTop` range is `[-maxTop, 0]`**.
 
 Directly measured on a live 5-turn chat:
 
@@ -239,7 +245,74 @@ src/test/strategies/c7-scroll-scan.js     ← uses conversation-turn + native sc
 
 # 📋 PART 6 — Next steps
 
-## Navigation status (2026-10-11, v1.9.2 work-in-progress)
+## Navigation root cause — DISTANT TARGETS (2026-11-09, live via chrome-devtools MCP) 🔴→📐
+
+> Replaces/updates the "Navigation status" note below. Reproduced and root-caused live on
+> **"Branch · Audit Evidence Engine"** (`/c/6ac3fe4f…`, 265 API nodes: 34 user / 131 assistant / 99 tool),
+> store build v1.9.2 (`ciclciocehhjmkknjhnpaaligmffmpcb`) — whose `virtual.js` matches current `src/`.
+
+### Symptom (exact user report)
+
+Clicking a TOC row "goes up, down somewhat and just stop" — the jump oscillates and gives up.
+Give-up diagnostic from the live console:
+
+```
+[TOC Nav] Time budget exhausted
+[TOC Nav] (new UI) Gave up on 75977115-… after 60 attempts —
+    window=[142,153] ordinalWindow=[26,26] target=0 targetOrdinal=0 mounted=5 logical=4769/33470
+```
+
+The target was the **oldest message (position 1 of 265)**; the mounted window sat at api indices 142–153.
+
+### Root cause — ChatGPT lazy-loads older messages in pages, and the search fights it
+
+1. **The scroller is now `flex-direction: column`** (NOT `column-reverse` as of 2026-10-10).
+   `window.TOC.scroll.isReverse()` handles this dynamically — helpers still behave. Re-measure any
+   future absolute-offset findings against `column` first.
+2. **Only the newest region is materialized.** ChatGPT fetches older messages in pages of 10 via
+
+   ```
+   GET /backend-api/conversations/<id>/messages?before=<turnUuid>&num_turns=10&include_has_versions=true
+   ```
+
+   triggered by **dwelling near the oldest materialized boundary**. On first open the boundary sat at
+   linear position ~191; positions 1–190 existed only as estimated spacer height (scrollHeight was an
+   estimate that grew 21k → 33k → 189k px as pages loaded).
+3. **Ratio jump lands in the spacer** → target can't mount → directional search scrolls older, hits the
+   boundary, the window stops changing → `stuck ≥ 2` **reverses direction** and scrolls the viewport
+   AWAY (newer) → window changes → positions say "target is older" → scroll back → oscillation.
+   60 attempts / 12 s → give up. The oscillation also **suppresses the pagination trigger** (which
+   needs dwell time at the boundary), so the pages that WERE fetched (4+) only crept the boundary
+   191 → ~142 before the budget died. This is the "goes up, down somewhat and just stop".
+
+### Fix validated live (the recipe)
+
+**Pin the viewport at the oldest boundary and let ChatGPT paginate — no reversal:**
+
+1. `scrollTop = 0` (logical 0; works on both layouts via `S.setLogical(container, 0)`).
+2. Materialization prepends pages ABOVE; ChatGPT's **scroll anchoring** moves `scrollTop` to keep the
+   viewport content stable (observed 0 → 72,883 as ~91k px materialized). Re-pin to logical 0 each
+   iteration; each pin exposes a new boundary and fires more `?before=` page fetches.
+3. After ~2 pins (~15–20 s from position 191 to position 1) the target **mounted**. A subsequent TOC
+   click then resolved via the fast path and centered the (45,000 px tall!) target turn correctly.
+
+Also observed: giant turns (25k-char message) center fine, but the viewport lands mid-turn —
+`finish()` should prefer the turn's START when the turn is taller than ~1.5 viewports.
+
+### Implementation checklist (for the fix)
+
+- [x] `performVirtualJump` (`src/virtual.js`): when the target's apiIndex/ordinal is OLDER than the
+      earliest mounted position, enter a **pagination-hold loop** — pin logical 0, poll `waitFor`,
+      re-pin on every window change where the earliest mounted api position DECREASES. **Never reverse
+      direction while pinned.** Budget: scale with page distance (`~10 turns/page`), e.g. 45–60 s for
+      distant targets; keep user-intent/superseded/SPA cancellation.
+- [x] `finish()`: block `'start'` (not center) when the target turn is taller than ~1.5 viewports.
+- [x] C7 scan: same awareness for the top region of huge chats (hold + repin instead of stepping into
+      the spacer; the scan currently reaches the bottom quickly but the oldest pages load on demand).
+- [x] Local testing setup: build with `dev.ps1`, load `dist/chrome_test` unpacked and
+      disable the store copy while verifying (double-injection gotcha, §5).
+
+## Navigation status (2026-10-11, v1.9.2 work-in-progress) — superseded by the note above
 
 **Works:** clicking an item whose turn is mounted or within a few steps resolves in 0–1500 ms (verified live, several rows + the 3-message chat resolves in 0–1 ms).
 

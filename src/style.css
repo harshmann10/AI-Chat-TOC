@@ -1150,6 +1150,39 @@
     font-weight: var(--toc-font-weight-medium);
 }
 
+#toc-extension li.toc-navigating > .toc-question-row,
+#toc-extension .toc-answer-row.toc-navigating {
+    border-radius: var(--toc-radius-sm);
+    animation: tocNavRowPulse 1.2s ease-in-out infinite;
+}
+
+#toc-extension.compact-mode li.toc-navigating a {
+    border-color: var(--toc-accent);
+    animation: tocCompactNavPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tocNavRowPulse {
+    0%, 100% {
+        background-color: var(--toc-bg-hover);
+        opacity: 0.7;
+    }
+    50% {
+        background-color: var(--toc-accent-light);
+        opacity: 1;
+    }
+}
+
+@keyframes tocCompactNavPulse {
+    0%, 100% {
+        background-color: var(--toc-bg-secondary);
+        transform: scale(1);
+    }
+    50% {
+        background-color: var(--toc-accent-light);
+        transform: scale(1.08);
+    }
+}
+
 /* =================================================================== */
 /* Toast Notification                                                  */
 /* =================================================================== */
